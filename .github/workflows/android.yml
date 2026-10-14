@@ -3,7 +3,7 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
 
 env:
   GODOT_VERSION: "4.7-stable"
