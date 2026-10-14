@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://di464jcqelmbi"
+path="res://.godot/imported/Hollis P Monroe This is goodbye Mixwell Ave.mp3-a4d72a11e82077edb632caf9fdab95c8.mp3str"
+
+[deps]
+
+source_file="res://sounds/music/Hollis P Monroe This is goodbye Mixwell Ave.mp3"
+dest_files=["res://.godot/imported/Hollis P Monroe This is goodbye Mixwell Ave.mp3-a4d72a11e82077edb632caf9fdab95c8.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://dqupbjdyxb565"
+path="res://.godot/imported/Julien Jabre - Swimming Places [Full Length] 2006.mp3-1ca4b81c212d1a08a6951bb5b84069b9.mp3str"
+
+[deps]
+
+source_file="res://sounds/music/Julien Jabre - Swimming Places [Full Length] 2006.mp3"
+dest_files=["res://.godot/imported/Julien Jabre - Swimming Places [Full Length] 2006.mp3-1ca4b81c212d1a08a6951bb5b84069b9.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
