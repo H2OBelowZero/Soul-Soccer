@@ -12,6 +12,7 @@ var backdrop: UI.Art
 var dim: ColorRect
 var pages := {}                 # StringName -> Control
 var current := NONE             # NONE = no menu (match running)
+var touch_back: Button         # phones: on-screen BACK (no Esc key)
 var booted := false             # title page shows once per launch
 var back_to := &"main"          # where SETTINGS / MUSIC / CONTROLS return to
 
@@ -183,6 +184,8 @@ func _ready() -> void:
 	_build_controls()
 	_build_music()
 	_build_pause()
+	if TouchControls.enabled():
+		_build_touch_back()
 	Jukebox.changed.connect(_refresh_music)
 	_refresh_music()
 	_go(NONE)
@@ -198,17 +201,33 @@ func _unhandled_input(event: InputEvent) -> void:
 	var start_pad := jb != null and jb.pressed and jb.button_index == JOY_BUTTON_START
 	if not (event.is_action_pressed("ui_cancel") or start_pad):
 		return
+	if _cancel():
+		get_viewport().set_input_as_handled()
+
+
+## Esc / pad Start / Android Back / touch BACK: pause, resume or step back one page. True if it did anything.
+func _cancel() -> bool:
 	if current == NONE:
 		if game.state == Game.S.TITLE:
-			return
+			return false
 		pause()
 	elif current == &"pause":
 		resume()
 	elif current in [&"title", &"main"]:
-		return
+		return false
 	else:
 		_back()
-	get_viewport().set_input_as_handled()
+	return true
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_WM_GO_BACK_REQUEST:   # Android Back button (quit_on_go_back is off)
+			if not _cancel() and current == &"main":
+				_go(&"title")
+		NOTIFICATION_APPLICATION_PAUSED:   # app sent to background mid-match
+			if current == NONE and game != null and game.state in [Game.S.KICKOFF, Game.S.PLAY, Game.S.GOAL]:
+				pause()
 
 
 # ------------------------------------------------------------------ navigation
@@ -231,6 +250,8 @@ func resume() -> void:
 
 func _go(page: StringName) -> void:
 	current = page
+	if touch_back:
+		touch_back.visible = page != NONE and page != &"title" and page != &"main"
 	for k: StringName in pages:
 		pages[k].visible = k == page
 	var paused := get_tree().paused
@@ -264,6 +285,21 @@ func _back() -> void:
 				_go(back_to)
 		_:
 			_go(back_to if current != &"music" else music_back)
+
+
+func _build_touch_back() -> void:
+	touch_back = UI.button("◀  BACK", func() -> void:
+		game.sfx.play("ui")
+		_cancel(), 260, 84, &"Cta")
+	touch_back.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	touch_back.add_theme_font_size_override("font_size", 38)
+	touch_back.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	touch_back.offset_left = -300
+	touch_back.offset_right = -40
+	touch_back.offset_top = 30
+	touch_back.offset_bottom = 114
+	touch_back.visible = false
+	root.add_child(touch_back)
 
 
 func _first_button(n: Node) -> Button:
@@ -557,7 +593,7 @@ func _build_title() -> void:
 		c.draw_string(f, Vector2(s.x * 0.45, s.y * 0.74), "PFL  ·  1 PAL STREET SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, UI.WHITE))
 	a.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	p.add_child(a)
-	var b := UI.button("PRESS  ENTER  TO START", func() -> void:
+	var b := UI.button("TAP  TO  START" if TouchControls.enabled() else "PRESS  ENTER  TO START", func() -> void:
 		booted = true
 		game.sfx.play("ui")
 		_go(&"main"), 620, 90, &"Cta")
@@ -575,13 +611,16 @@ func _build_title() -> void:
 func _build_main() -> void:
 	var p := _page(&"main")
 	_header(p, "MAIN MENU", "PICK YOUR GAME")
-	_menu_list(p, 90, 250, 600, [
+	var items := [
 		["1 PLAYER", _open_stage.bind(false)],
 		["2 PLAYERS  ·  LOCAL", _open_stage.bind(true)],
 		["SETTINGS", _open.bind(&"settings")],
 		["MUSIC", _open.bind(&"music")],
 		["CONTROLS", _open.bind(&"controls")],
-		["QUIT", get_tree().quit]])
+		["QUIT", get_tree().quit]]
+	if TouchControls.enabled():
+		items.remove_at(1)   # two people can't share one touchscreen
+	_menu_list(p, 90, 250, 600, items)
 	var f := UI.font()
 	var tag := UI.art(func(c: Control) -> void:
 		UI.brush(c, Vector2(0, 150), Vector2(c.size.x, 120), 230, UI.YELLOW, 71)
@@ -829,6 +868,16 @@ func _build_controls() -> void:
 		["SPRINT", "L-SHIFT  /  RT", "R-SHIFT"],
 		["SOUL", "Q  /  LB", "'"],
 		["PAUSE", "ESC  /  START", "ESC  /  START"]]
+	if TouchControls.enabled():
+		data = [
+			["", "TOUCH", ""],
+			["MOVE", "LEFT THUMB  ·  DRAG THE STICK", ""],
+			["SPRINT", "PUSH STICK TO THE OUTER RING / RUN", ""],
+			["PASS / SWITCH", "PASS", ""],
+			["SHOOT / TACKLE", "SHOT  (HOLD TO CHARGE)", ""],
+			["SKILL / DODGE", "SKILL", ""],
+			["SOUL", "SOUL  (HOLD + PASS / SHOT / SKILL)", ""],
+			["PAUSE", "II  (TOP RIGHT)", ""]]
 	for r in data.size():
 		for c in 3:
 			var l := UI.label(data[r][c], 28 if r > 0 else 24, UI.YELLOW if (c == 0 or r == 0) else UI.WHITE, 4)

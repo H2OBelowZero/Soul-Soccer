@@ -1,0 +1,51 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+env:
+  GODOT_VERSION: "4.7-stable"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Godot and export templates
+        run: |
+          base=https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}
+          curl -fsSL -o godot.zip  $base/Godot_v${GODOT_VERSION}_linux.x86_64.zip
+          curl -fsSL -o tpl.tpz    $base/Godot_v${GODOT_VERSION}_export_templates.tpz
+          unzip -q godot.zip && mv Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+          mkdir -p ~/.local/share/godot/export_templates && unzip -q tpl.tpz -d tpl
+          mv tpl/templates ~/.local/share/godot/export_templates/${GODOT_VERSION/-/.}
+      - name: Debug keystore + editor settings
+        run: |
+          mkdir -p ~/.config/godot ~/.local/share/godot/keystores
+          keytool -genkeypair -keystore ~/.local/share/godot/keystores/debug.keystore -storepass android \
+            -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 9999 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          cat > ~/.config/godot/editor_settings-4.7.tres <<EOT
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$HOME/.local/share/godot/keystores/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOT
+      - name: Import and export
+        run: |
+          godot --headless --import || true
+          mkdir -p build
+          godot --headless --export-debug Android build/SoulSoccer.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SoulSoccer-apk
+          path: build/SoulSoccer.apk

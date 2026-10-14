@@ -65,6 +65,7 @@ var goals: Array[Goal] = []
 var ball: Ball
 var hud: Hud
 var menu: Menu
+var touch: TouchControls
 var sfx: Sfx
 var cam: Camera3D
 var focus := Vector3.ZERO
@@ -99,6 +100,10 @@ func _ready() -> void:
 	menu.game = self
 	add_child(menu)
 	_setup_inputs()
+	if TouchControls.enabled():
+		touch = TouchControls.new()
+		touch.game = self
+		add_child(touch)
 	_place_for_kickoff(0)
 	hud.show_title()
 	menu.show_main()
@@ -139,7 +144,9 @@ func _add_post_process() -> void:
 	var q := QuadMesh.new()
 	q.size = Vector2(2, 2)
 	var m := ShaderMaterial.new()
-	m.shader = load("res://shaders/post.gdshader")
+	# Normal-roughness buffer is Forward+ only: phones (Mobile renderer) get the depth-only outline pass.
+	var forward := RenderingServer.get_current_rendering_method() == "forward_plus"
+	m.shader = load("res://shaders/post.gdshader" if forward else "res://shaders/post_mobile.gdshader")
 	m.render_priority = -128   # first in the transparent pass: it paints over everything drawn before it, so transparent things must come after
 	var mi := MeshInstance3D.new()
 	mi.mesh = q

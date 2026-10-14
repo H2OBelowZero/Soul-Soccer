@@ -298,6 +298,7 @@ func _build_prompts() -> void:
 	prompts.offset_top = -120
 	prompts.offset_right = -24
 	prompts.offset_bottom = -20
+	prompts.visible = not TouchControls.enabled()   # the on-screen buttons replace the key hints
 	group.add_child(prompts)
 
 
@@ -343,7 +344,7 @@ func _build_result() -> void:
 	v.add_child(result_label)
 	result_sub = _label("", 44, UI.YELLOW, 8)
 	v.add_child(result_sub)
-	v.add_child(_label("PRESS  ENTER / START", 34, Color.WHITE, 8))
+	v.add_child(_label("TAP  TO  CONTINUE" if TouchControls.enabled() else "PRESS  ENTER / START", 34, Color.WHITE, 8))
 
 
 func _spacer(h: float) -> Control:
