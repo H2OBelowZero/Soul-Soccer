@@ -13,6 +13,7 @@ var pass_target: Player
 var kick_t := -10.0
 var spin := 0.0              # curve: Magnus force strength around +Y
 var power := false
+var charge_level := 0        # charge bucket last pinged (0..3)
 var charge := 0.0            # shot charge 0..1; survives passes, lost when the other team gets the ball
 var quick := false
 var wall_touch := false
@@ -120,6 +121,11 @@ func _ready() -> void:
 ## overloaded goes black at the core and won't sit still. As the momentum builds the body takes on the
 ## colour, the glow brightens and the trail / aura thicken. Every effect reads Vessel.glow().
 func _process(_delta: float) -> void:
+	var lvl := floori(charge * Sfx.LEVEL_PITCH.size())   # 0 = none; a level at 1/3, 2/3 and a full charge
+	if lvl != charge_level:
+		charge_level = lvl
+		if lvl > 0:
+			game.sfx.level_ping(lvl)
 	var v := game.vessel
 	var s := v.stage()
 	var m := v.momentum()
@@ -151,6 +157,8 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if Net.is_client():
+		return   # the host simulates; Net moves this ball
 	if carrier:
 		_carry()
 		return
@@ -269,7 +277,6 @@ func receive(p: Player) -> void:
 			no_pickup[p] = game.t + 1.0
 			add_collision_exception_with(p)
 			get_tree().create_timer(0.8).timeout.connect(remove_collision_exception_with.bind(p))
-			game.comic("KAPOW!", p.global_position, Color("ff3b30"))
 			game.shake(0.6)
 			return
 		if spd > 25.0:
@@ -279,7 +286,6 @@ func receive(p: Player) -> void:
 			last_touch = p
 			no_pickup[p] = game.t + 0.6
 			game.feed(p.team, "PARRY!", 8, from)
-			game.comic("PARRY!", p.global_position, Color("2de2e6"))
 			game.sfx.play("thud")
 			game.sfx.play("gasp")
 			return
@@ -301,7 +307,7 @@ func receive(p: Player) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if carrier or body.is_in_group("floor"):
+	if Net.is_client() or carrier or body.is_in_group("floor"):
 		return
 	spin = 0.0
 	var spd := linear_velocity.length()
@@ -309,7 +315,6 @@ func _on_body_entered(body: Node) -> void:
 	if hard and spd > 6.0:
 		game.sfx.play("thud", linear_to_db(clampf(spd / 25.0, 0.2, 1.0)))
 		if spd > 18.0:
-			game.comic("BAM!", global_position, Color("ffe100"), 0.8)
 			game.shake(0.25)
 	if body.is_in_group("wall") and kick_type == "pass":
 		wall_touch = true

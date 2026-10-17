@@ -15,16 +15,16 @@ const RED := Color("ff3b3b")
 
 const SKEW := -0.18   # the italic slant shared by type and slabs
 
-## Roster pool for the character select. Cosmetic only: look and name. Gameplay stays tied to the team slot.
+## Roster pool for the character select. Cosmetic only: look, name and gender (picks the 3D model). Gameplay stays tied to the team slot.
 ## hair: 0 curls · 1 bald · 2 braids · 3 cap · 4 afro · 5 headband
 const CHARS := [
 	{"name": "AIDEN", "last": "JACOBS", "nick": "ACE", "skin": Color("7a4a2e"), "hair": 0, "hc": Color("14110f"), "tone": Color("ffe600")},
 	{"name": "SIBUSISO", "last": "ZULU", "nick": "TEMPO", "skin": Color("5a3825"), "hair": 1, "hc": Color("14110f"), "tone": Color("ff3b3b")},
 	{"name": "LUVO", "last": "MBEKI", "nick": "GRANITE", "skin": Color("3e2618"), "hair": 5, "hc": Color("14110f"), "tone": Color("1e9bff")},
 	{"name": "KYLE", "last": "VAN DER MERWE", "nick": "FLASH", "skin": Color("e0b08a"), "hair": 3, "hc": Color("f2c94c"), "tone": Color("ffe600")},
-	{"name": "ZARA", "last": "NAIDOO", "nick": "ZEE", "skin": Color("8d5a3b"), "hair": 2, "hc": Color("1b120d"), "tone": Color("ff3b3b")},
+	{"name": "ZARA", "female": true, "last": "NAIDOO", "nick": "ZEE", "skin": Color("8d5a3b"), "hair": 2, "hc": Color("1b120d"), "tone": Color("ff3b3b")},
 	{"name": "THANDO", "last": "KHUMALO", "nick": "TIGER", "skin": Color("4a2e1e"), "hair": 4, "hc": Color("0d0b0a"), "tone": Color("39ff14")},
-	{"name": "NALEDI", "last": "DLAMINI", "nick": "NOVA", "skin": Color("6b4028"), "hair": 2, "hc": Color("2a1a12"), "tone": Color("b04dff")},
+	{"name": "NALEDI", "female": true, "last": "DLAMINI", "nick": "NOVA", "skin": Color("6b4028"), "hair": 2, "hc": Color("2a1a12"), "tone": Color("b04dff")},
 	{"name": "JABU", "last": "NDLOVU", "nick": "JAZZ", "skin": Color("8d5a3b"), "hair": 0, "hc": Color("2a1a12"), "tone": Color("1e9bff")},
 ]
 ## Default keepers (one per team, not pickable).

@@ -65,6 +65,8 @@ var goals: Array[Goal] = []
 var ball: Ball
 var hud: Hud
 var menu: Menu
+var net: Net
+var touch: Touch
 var sfx: Sfx
 var cam: Camera3D
 var focus := Vector3.ZERO
@@ -95,13 +97,27 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.game = self
 	add_child(hud)
+	net = Net.new()
+	net.game = self
+	add_child(net)
+	net.dropped.connect(_net_dropped)
 	menu = Menu.new()
 	menu.game = self
 	add_child(menu)
+	if Touch.available():
+		touch = Touch.new()
+		touch.game = self
+		add_child(touch)
 	_setup_inputs()
 	_place_for_kickoff(0)
 	hud.show_title()
 	menu.show_main()
+
+
+## The link died (Wi-Fi, other player quit): back to the menu with a note.
+func _net_dropped(reason: String) -> void:
+	to_title()
+	menu.toast(reason)
 
 
 func has_keeper() -> bool:
@@ -139,7 +155,7 @@ func _add_post_process() -> void:
 	var q := QuadMesh.new()
 	q.size = Vector2(2, 2)
 	var m := ShaderMaterial.new()
-	m.shader = load("res://shaders/post.gdshader")
+	m.shader = load("res://shaders/post.gdshader" if RenderingServer.get_current_rendering_method() == "forward_plus" else "res://shaders/post_mobile.gdshader")
 	m.render_priority = -128   # first in the transparent pass: it paints over everything drawn before it, so transparent things must come after
 	var mi := MeshInstance3D.new()
 	mi.mesh = q
@@ -159,15 +175,20 @@ func _process(delta: float) -> void:
 	sfx.set_excite(excite)
 	match state:
 		S.PLAY:
-			_play(delta)
+			if not Net.is_client():
+				_play(delta)
 		S.OVER:
 			if Input.is_action_just_pressed("start") or Input.is_action_just_pressed("pass"):
-				to_title()
+				if Net.is_client():
+					net.request_title()   # the host decides when the pair goes back to the menu
+				else:
+					to_title()
 	_camera(delta)
 	hud.refresh()
 
 
 func to_title() -> void:
+	net.leave()
 	match_id += 1
 	sfx.hush()
 	Engine.time_scale = 1.0
@@ -261,7 +282,7 @@ func _is_decider(side: int) -> bool:
 ## sudden death (golden) ends the match outright, whatever the bricks / score. A goal cashes the ball out, but
 ## half of the scorer's charge is banked for them (see Vessel.bank).
 func on_goal(side: int) -> void:
-	if state != S.PLAY:
+	if state != S.PLAY or Net.is_client():
 		return
 	var id := match_id
 	var scorer := 1 - side
@@ -284,7 +305,6 @@ func on_goal(side: int) -> void:
 	sfx.play("goal", -6.0)
 	var fx := fx_color(team.color)   # the cash-out below resets the ball, so read its colour first
 	burst(ball.global_position, 110)
-	comic("GOAL!", ball.global_position, fx, 2.0)
 	hud.goal_flash(fx)
 	var own := ball.last_touch != null and ball.last_touch.team == side
 	hud.banner("SOUL GOAL!" if soul_goal else "GOAL!", team.alt, 1.8,
@@ -302,13 +322,13 @@ func on_goal(side: int) -> void:
 	Engine.time_scale = 1.0
 	if not street:
 		goals[side].set_bricks(bricks[side], true)
+		Net.fx(&"bricks", [side, bricks[side]])
 		hud.popup(side, "+%d BRICK%s  —  GOAL SHRINKS" % [add, "S" if add > 1 else ""], true)
 		await get_tree().create_timer(0.55, false).timeout
 		if id != match_id:
 			return
 		shake(0.6)
 		sfx.play("clunk")
-		comic("CLUNK!", Vector3(goals[side].line_x(), 0.5, 0), Color("ff7a5c"), 1.4)
 		await get_tree().create_timer(1.4, false).timeout
 		if id != match_id:
 			return
@@ -410,9 +430,7 @@ func feed(team: int, text: String, amt: float, victim: Player = null) -> void:
 
 
 func _stage_up(team: int, s: int) -> void:
-	var col := vessel.glow()
 	hud.popup(team, String(Vessel.STAGES[s].name), true)
-	comic(Vessel.STAGES[s].name + "!", ball.global_position, col, 0.7 + s * 0.15)
 	burst(ball.global_position, 16 + s * 10, s == Vessel.Stage.OVERLOADED)
 	sfx.play("soul_big" if s >= Vessel.Stage.HUNGRY else "power")
 	if s >= Vessel.Stage.HUNGRY:
@@ -449,10 +467,8 @@ func _exposed(team: int, victim: Player) -> void:
 	match vessel.turnover(team, t):
 		Vessel.Lost.SCATTER:
 			hud.popup(1 - team, "LOST IT — THE SOULS SCATTER")
-			comic("SCATTER!", ball.global_position, Color("c8c8c8"), 0.8)
 		Vessel.Lost.BACKLASH:
 			hud.popup(team, "BACKLASH — POWER STOLEN!", true)
-			comic("BACKLASH!", ball.global_position, vessel.glow(), 1.3)
 			burst(ball.global_position + Vector3.UP * 0.5, 50, true)
 			shake(0.7)
 			sfx.play("soul_big")
@@ -612,6 +628,7 @@ func _camera(delta: float) -> void:
 
 
 func shake(amount: float) -> void:
+	Net.fx(&"shake", [amount])
 	trauma = minf(1.0, trauma + amount)
 
 
@@ -622,29 +639,9 @@ func hitstop() -> void:
 		Engine.time_scale = 1.0
 
 
-## Comic-book impact word floating over the action.
 ## Effect colour: the ball's own once it has woken (saturating as the momentum builds), `fallback` while it sleeps.
 func fx_color(fallback := Color.WHITE) -> Color:
 	return vessel.glow() if vessel.stage() > Vessel.Stage.DORMANT else fallback
-
-
-## Comic-book impact word floating over the action, in the ball's colour.
-func comic(text: String, pos: Vector3, col: Color, size := 1.0) -> void:
-	var l := Arena.label(self, text, pos + Vector3(0, 1.8, 0), fx_color(col), 0.009 * size, 110)
-	l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	l.no_depth_test = true
-	l.outline_size = 30
-	l.render_priority = 20
-	l.outline_render_priority = 19
-	l.scale = Vector3.ONE * 0.2
-	var tw := l.create_tween().set_ignore_time_scale(true)
-	tw.tween_property(l, "scale", Vector3.ONE * 1.25, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw.tween_property(l, "scale", Vector3.ONE, 0.08)
-	tw.parallel().tween_property(l, "position:y", l.position.y + 0.6, 0.7)
-	tw.tween_interval(0.3)
-	tw.tween_property(l, "modulate:a", 0.0, 0.2)
-	tw.parallel().tween_property(l, "outline_modulate:a", 0.0, 0.2)
-	tw.tween_callback(l.queue_free)
 
 
 ## The ball's aura colour for effects: deepened a little so it reads on the pale pitch, and a still-white ball
@@ -659,6 +656,7 @@ func aura() -> Color:
 ## Confetti: the kick sparks' flattened-circle streaks, a little bigger, in the aura colour (fading to a lighter
 ## tint, or to black when `dark`) and fading out as they fall.
 func burst(pos: Vector3, amount := 60, dark := false) -> void:
+	Net.fx(&"burst", [pos, amount, dark])
 	var col := aura()
 	var p := GPUParticles3D.new()
 	p.one_shot = true

@@ -298,6 +298,7 @@ func _build_prompts() -> void:
 	prompts.offset_top = -120
 	prompts.offset_right = -24
 	prompts.offset_bottom = -20
+	prompts.visible = not Touch.available()   # the on-screen pad has its own labels
 	group.add_child(prompts)
 
 
@@ -376,13 +377,14 @@ func set_enabled(on: bool) -> void:
 	group.visible = shown and on
 
 
-func show_winner(team: int) -> void:
+func show_winner(team: int, flash_it := true) -> void:
 	var info: Dictionary = game.TEAMS[team]
 	result.visible = true
 	result_label.text = "%s WIN!" % info.name
 	result_label.add_theme_color_override("font_color", info.alt)
 	result_sub.text = "%d  -  %d" % [game.score[0], game.score[1]] if game.street else ""
-	goal_flash(info.color)
+	if flash_it:
+		goal_flash(info.color)
 
 
 func _mark_player_team() -> void:
@@ -423,6 +425,7 @@ func refresh() -> void:
 
 
 func popup(team: int, text: String, big := false) -> void:
+	Net.fx(&"popup", [team, text, big])
 	var info: Dictionary = game.TEAMS[team]
 	var l := _label(text, 44 if big else 30, Color.WHITE if big else info.alt, 10)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT if team == 0 else HORIZONTAL_ALIGNMENT_RIGHT
@@ -437,6 +440,7 @@ func popup(team: int, text: String, big := false) -> void:
 
 
 func banner(text: String, color: Color, hold: float, sub := "") -> void:
+	Net.fx(&"banner", [text, color, hold, sub])
 	if banner_tw:
 		banner_tw.kill()
 	banner_label.text = text
@@ -455,9 +459,11 @@ func banner(text: String, color: Color, hold: float, sub := "") -> void:
 
 
 func goal_flash(color: Color) -> void:
+	Net.fx(&"flash", [color])
 	flash.color = Color(color, 0.75)
 	create_tween().set_ignore_time_scale(true).tween_property(flash, "color:a", 0.0, 0.6)
 
 
 func speed_lines(duration: float) -> void:
+	Net.fx(&"lines", [duration])
 	lines_t = maxf(lines_t, duration)

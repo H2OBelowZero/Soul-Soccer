@@ -1,3 +1,11 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# local tooling / build output
+.serena/
+builds/
+tools/*.png
+*.apk
+*.aab
+android/

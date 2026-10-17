@@ -10,6 +10,7 @@ extends Node
 signal changed
 
 const MUSIC_DIR := "res://sounds/music/"
+const LAST_FILE := "user://last_song.txt"
 const EXTENSIONS := ["mp3", "ogg", "wav"]
 const MENU_DB := -9.0
 const MATCH_DB := -21.0
@@ -31,6 +32,20 @@ func _ready() -> void:
 	player.finished.connect(next)
 	add_child(player)
 	_scan_library()
+	_random_start()
+
+
+## Start on a random track, never the one the previous run opened with (remembered in user://).
+func _random_start() -> void:
+	if songs.size() < 2:
+		return
+	var f := FileAccess.open(LAST_FILE, FileAccess.READ)
+	var last := f.get_as_text() if f else ""
+	var pool := range(songs.size()).filter(func(i: int) -> bool: return songs[i].title != last)
+	play_index(pool.pick_random())
+	f = FileAccess.open(LAST_FILE, FileAccess.WRITE)
+	if f:
+		f.store_string(songs[index].title)
 
 
 ## Reverb + low-pass on its own bus, switched on only while a match is live.

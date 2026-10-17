@@ -7,6 +7,7 @@ var game: Game
 var team := 0
 var st: Dictionary
 var is_keeper := false
+var slot := 0               # outfield slot 0..2
 var ch: Dictionary          # cosmetic identity (UI.CHARS / UI.KEEPERS)
 var sig := 0                # Soul Signature (Vessel.Kind) the ball steals when you beat this player
 var beat_watch := {}        # opponent -> last time they were squarely in front of me (dribble-past check)
@@ -34,6 +35,7 @@ var spin_t := 0.0
 var burst_t := 0.0
 var shove_t := 0.0
 var push_cd := 0.0          # keeper shove cooldown
+var was_charging := false
 var charging := false       # holding shoot: the charge itself lives on the ball
 
 const CHARGE_T := 1.2       # seconds to a full charge
@@ -56,11 +58,19 @@ var buffered := ""
 var buffered_t := -10.0
 
 var rig: Node3D
-var legs: Array[Node3D] = []
-var arms: Array[Node3D] = []
+var anim: AnimationPlayer
+var act := ""               # one-shot clip (kick, pass) and when it ends
+var act_end := 0.0
 var ring: MeshInstance3D
 var arrow: MeshInstance3D
-var step := 0.0
+
+const LIBRARY := preload("res://animations/soccer_library.res")
+const MODEL_SCALE := 1.65   # the FBX characters are ~1.1 m tall; the capsule is 1.8
+## Male picks take a model by squad slot, female picks the purple one; every keeper wears the keeper model.
+## The FBXs are plain white meshes: the kit is painted on at load from each vertex's dominant bone (see _kit).
+const MALE_MODELS := ["red", "yellow", "green"]
+const FEMALE_MODEL := "purple"
+const KEEPER_MODEL := "keeper"
 
 
 ## idx: outfield slot 0..2 (centre, left, right); ignored for keepers.
@@ -69,6 +79,7 @@ func setup(g: Game, t: int, idx: int, keeper: bool) -> void:
 	team = t
 	st = game.TEAMS[t]
 	is_keeper = keeper
+	slot = idx
 	sig = st.sigs[0 if keeper else idx + 1]
 	ch = UI.KEEPERS[t] if keeper else UI.CHARS[game.picks[t][idx]]
 	dir = 1.0 if t == 0 else -1.0
@@ -90,36 +101,20 @@ func setup(g: Game, t: int, idx: int, keeper: bool) -> void:
 func _build_rig() -> void:
 	rig = Node3D.new()
 	add_child(rig)
-	var shirt: Color = st.keeper if is_keeper else st.color
-	var skin: Color = ch.skin
-	for sx: float in [-1.0, 1.0]:
-		var hip := Node3D.new()
-		hip.position = Vector3(sx * 0.14, 0.9, 0)
-		rig.add_child(hip)
-		legs.append(hip)
-		var leg := CapsuleMesh.new()
-		leg.radius = 0.11
-		leg.height = 0.9
-		Arena.mesh(hip, leg, Vector3(0, -0.45, 0), st.alt)
-		var boot := BoxMesh.new()
-		boot.size = Vector3(0.16, 0.1, 0.3)
-		Arena.mesh(hip, boot, Vector3(0, -0.86, 0.06), Color("111111"))
-		var sh := Node3D.new()
-		sh.position = Vector3(sx * 0.38, 1.5, 0)
-		rig.add_child(sh)
-		arms.append(sh)
-		var arm := CapsuleMesh.new()
-		arm.radius = 0.08
-		arm.height = 0.62
-		Arena.mesh(sh, arm, Vector3(0, -0.28, 0), skin)
-	var torso := CapsuleMesh.new()
-	torso.radius = 0.3
-	torso.height = 0.85
-	Arena.mesh(rig, torso, Vector3(0, 1.28, 0), shirt)
-	var head := SphereMesh.new()
-	head.radius = 0.21
-	head.height = 0.42
-	Arena.mesh(rig, head, Vector3(0, 1.9, 0), skin)
+	var model_name: String = KEEPER_MODEL if is_keeper else (FEMALE_MODEL if ch.get("female", false) else MALE_MODELS[slot])
+	var model := (load("res://models/%s.fbx" % model_name) as PackedScene).instantiate()
+	var body := model.get_node_or_null("Armature")   # purple / keeper FBXs have the Skeleton3D at the root instead
+	for c in model.get_children():   # the FBX also carries spare characters, a camera and a light
+		if c != body and c.name != "Skeleton3D":
+			c.free()
+	model.scale = Vector3.ONE * MODEL_SCALE
+	rig.add_child(model)
+	anim = AnimationPlayer.new()
+	model.add_child(anim)
+	anim.root_node = NodePath("../Armature" if body else "..")
+	_kit(model.find_child("Skeleton3D", true, false) as Skeleton3D)
+	anim.add_animation_library("", LIBRARY)
+	anim.play("soccer_idle")
 	# Headband shows the Soul Signature, so you can see whose identity you're about to steal.
 	var soul_col: Color = Vessel.KINDS[sig].color
 	var band := TorusMesh.new()
@@ -153,6 +148,57 @@ func _build_rig() -> void:
 	arrow.position.y = 2.6
 	arrow.visible = false
 	add_child(arrow)
+
+
+## Paint the white model: shirt in the team colour, shorts/socks in the trim, skin and hair from the character.
+## The team kit is the same for the whole squad, captain included; the keeper wears the keeper colour.
+func _kit(sk: Skeleton3D) -> void:
+	var mi := sk.get_child(0) as MeshInstance3D
+	var src := mi.mesh as ArrayMesh
+	var arr := src.surface_get_arrays(0)
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var bones: PackedInt32Array = arr[Mesh.ARRAY_BONES]
+	var weights: PackedFloat32Array = arr[Mesh.ARRAY_WEIGHTS]
+	var per := bones.size() / verts.size()   # 4 or 8 influences per vertex
+	var shirt: Color = st.keeper if is_keeper else st.color
+	var trim: Color = Color("1b1b24") if is_keeper else st.alt
+	var skin: Color = ch.skin
+	var hair: Color = skin if ch.hair == 1 else ch.hc
+	var part := PackedInt32Array()   # per vertex: 0 skin, 1 shirt, 2 shorts, 3 socks, 4 boots, 5 head
+	var head_lo := INF
+	var head_hi := -INF
+	for v in verts.size():
+		var best := 0
+		for k in per:
+			if weights[v * per + k] > weights[v * per + best]:
+				best = k
+		var bn := String(mi.skin.get_bind_name(bones[v * per + best]))
+		var p := 0
+		if "Spine" in bn or "Shoulder" in bn or (bn.ends_with("Arm") and not "Fore" in bn):
+			p = 1
+		elif "Hips" in bn or "UpLeg" in bn:
+			p = 2
+		elif bn.ends_with("Leg"):
+			p = 3
+		elif "Foot" in bn or "Toe" in bn:
+			p = 4
+		elif "Head" in bn:
+			p = 5
+			head_lo = minf(head_lo, verts[v].y)
+			head_hi = maxf(head_hi, verts[v].y)
+		part.append(p)
+	var cols := PackedColorArray()
+	var palette := [skin, shirt, trim, shirt.lerp(trim, 0.5) if is_keeper else shirt, Color("14141c")]
+	for v in verts.size():
+		cols.append(hair if part[v] == 5 and verts[v].y > lerpf(head_lo, head_hi, 0.62) else (skin if part[v] == 5 else palette[part[v]]))
+	arr[Mesh.ARRAY_COLOR] = cols
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, src.surface_get_format(0) & Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS)
+	mi.mesh = out
+	var mat := StandardMaterial3D.new()
+	mat.vertex_color_use_as_albedo = true
+	mat.roughness = 0.85
+	mi.material_override = mat
 
 
 func set_human(on: bool) -> void:
@@ -204,6 +250,8 @@ func on_receive(from: Player) -> void:
 # ------------------------------------------------------------------ movement
 
 func _physics_process(delta: float) -> void:
+	if Net.is_client():
+		return   # the host simulates; Net poses this player
 	stun_t = maxf(stun_t - delta, 0.0)
 	tackle_cd = maxf(tackle_cd - delta, 0.0)
 	skill_t = maxf(skill_t - delta, 0.0)
@@ -264,34 +312,46 @@ func _physics_process(delta: float) -> void:
 			_shoulder(o)
 
 
-func _process(delta: float) -> void:
-	var sp := Vector2(mv.x, mv.z).length()
-	step += delta * sp * 1.7
-	var swing := sin(step) * clampf(sp / 6.0, 0.0, 1.0) * 0.9
-	legs[0].rotation.x = swing
-	legs[1].rotation.x = -swing
-	arms[0].rotation.x = -swing * 0.8
-	arms[1].rotation.x = swing * 0.8
-	rig.rotation = Vector3(clampf(sp / 12.0, 0.0, 0.35), atan2(facing.x, facing.z), 0)
-	rig.position.y = absf(sin(step)) * 0.06
-	if spin_t > 0.0:
-		rig.rotation.y += TAU * (1.0 - spin_t / 0.45)
+## Animation to show right now: [clip, speed].
+func _clip(sp: float) -> Array:
+	if (game.state == Game.S.GOAL or game.state == Game.S.OVER) and team == game.last_scorer:
+		return ["joyful_jump", 1.0]
 	if diving:
-		rig.rotation.z = -signf(lunge_vel.z) * dir * 1.3
-	elif lunge_t > 0.0:
-		rig.rotation.x = 0.8
-	elif stun_t > 0.0:
-		rig.rotation.x = -0.6
-	var celebrating := (game.state == Game.S.GOAL or game.state == Game.S.OVER) and team == game.last_scorer
-	if celebrating:
-		rig.position.y = absf(sin(game.t * 9.0 + lane)) * 0.5
-		arms[0].rotation.x = -2.8
-		arms[1].rotation.x = -2.8
-	arrow.position.y = 2.6 + sin(game.t * 6.0) * 0.08
+		return ["goalkeeper_diving_save", 3.0]
+	if lunge_t > 0.0:
+		return ["soccer_tackle", 3.0]
+	if stun_t > 0.0:
+		return ["fallen_idle", 1.0]
+	if spin_t > 0.0:
+		return ["soccer_spin", 2.8]
 	if push_cd > 0.35:
-		arms[0].rotation.x = -1.5
-		arms[1].rotation.x = -1.5
+		return ["goalkeeper_body_block", 2.0]
+	if game.t < act_end:
+		return [act, 1.5]
+	if sp > 0.5:
+		return ["dribble" if has_ball() else "jog_forward", clampf(sp / 5.0, 0.6, 1.6)]
+	return ["goalkeeper_idle" if is_keeper else ("offensive_idle" if has_ball() else "soccer_idle"), 1.0]
+
+
+## One-shot clip for kicks and passes.
+func _act(clip: String, secs: float) -> void:
+	act = clip
+	act_end = game.t + secs
+
+
+func _process(_delta: float) -> void:
+	var sp := Vector2(mv.x, mv.z).length()
+	rig.rotation.y = atan2(facing.x, facing.z)
+	var clip := _clip(sp)
+	if anim.current_animation != clip[0]:
+		anim.play(clip[0], 0.15, clip[1])
+	else:
+		anim.speed_scale = clip[1]
+	arrow.position.y = 2.6 + sin(game.t * 6.0) * 0.08
 	var ch := game.ball.charge if charging else 0.0
+	if charging or was_charging:
+		game.sfx.charge_loop(charging, ch)
+	was_charging = charging
 	ring.scale = Vector3(1.0 + ch * 0.8, 0.1, 1.0 + ch * 0.8)
 	(ring.material_override as StandardMaterial3D).albedo_color = Color("ffe100").lerp(Color("ff3b30"), ch)
 
@@ -299,6 +359,8 @@ func _process(delta: float) -> void:
 # ------------------------------------------------------------------ human
 
 func _human_input() -> Vector3:
+	if Net.active() and game.menu.current != Menu.NONE:
+		return Vector3.ZERO   # LAN: the pause menu does not stop the match, so it must stop the pad
 	var v := Input.get_vector(_a("move_left"), _a("move_right"), _a("move_up"), _a("move_down"))
 	var move := Vector3(v.x, 0, v.y)
 	sprinting = Input.is_action_pressed(_a("sprint"))
@@ -391,6 +453,7 @@ func do_pass(quick := false, hint := Vector3.ZERO) -> void:
 		game.steady(team, "HEEL PASS!", 1.5)
 	if game.t - received_t < 0.45:
 		game.steady(team, "ONE TOUCH!", 1.0)
+	_act("soccer_pass", 0.5)
 	b.kick(self, vel, "pass", best, 0.0, false, quick)
 	last_pass_to = best
 	last_pass_t = game.t
@@ -439,9 +502,9 @@ func do_shoot(power := false, curve := false, aim_hint := 0.0) -> void:
 		var c := 2.2 * signf(target.z if target.z != 0.0 else 1.0) * signf(side.z if side.z != 0.0 else 1.0)
 		target += side * c
 		spin = -2.0 * c * speed / (d * d)
+	_act("kick_soccerball", 0.45)
 	b.kick(self, Ball.ballistic(b.global_position, target, speed), "shot", null, spin, power)
 	game.shake(0.55 if power else 0.3)
-	game.comic("KAPOW!" if power else "POW!", b.global_position, st.alt, 1.2 if power else 0.9)
 	if power and human:
 		game.hud.speed_lines(0.6)
 
@@ -474,9 +537,9 @@ func _check_tackle() -> void:
 			lunge_t = 0.0
 			c.stun_t = 0.7
 			c.knock = facing * 7.0
+			game.sfx.pain(c.ch.get("female", false))
 			b.give(self)
 			game.feed(team, "TACKLE!", 12, c)
-			game.comic(["BAM!", "WHAM!", "CRUNCH!"].pick_random(), c.global_position, st.color)
 			game.burst(c.global_position + Vector3.UP, 20)
 			game.hitstop()
 			game.shake(0.45)
@@ -497,7 +560,6 @@ func _end_lunge() -> void:
 		var c := game.ball.carrier
 		if c and c.team != team and _flat(c.global_position - global_position) < 3.0:
 			game.feed(c.team, "SKINNED!", 8, self)
-		game.comic("WHIFF!", global_position, Color.WHITE, 0.6)
 
 
 ## Skill is extraction: each move only feeds the ball if it beats somebody.
@@ -533,13 +595,11 @@ func do_skill(move: Vector3) -> void:
 		skill_t = 0.6 * immune
 		knock = facing.cross(Vector3.UP) * 4.0 * amp * [-1.0, 1.0].pick_random()
 		game.feed(team, "NUTMEG!", 18 * amp, def)
-		game.comic("NUTMEG!", def.global_position, Color("ff2d95"))
 	elif sprinting and awake:
 		b.kick(self, facing * 7.0 * amp + Vector3.UP * 7.0 * amp, "flick", self)
 		b.no_pickup[self] = game.t + 0.5
 		skill_t = 0.7 * immune
 		game.feed(team, "RAINBOW FLICK!", (10 if near else 0) * amp, near)
-		game.comic("RAINBOW!", global_position, Color("7cff3a"))
 	elif move.length() < 0.2:
 		var bitten: Player = null
 		for o: Player in game.team_players[1 - team]:
@@ -547,7 +607,6 @@ func do_skill(move: Vector3) -> void:
 				o.stun_t = maxf(o.stun_t, 0.5 * amp)  # they bite
 				bitten = o
 		game.feed(team, "FAKE SHOT!", (8 if bitten else 0) * amp, bitten)
-		game.comic("FAKE!", global_position, Color("00e5ff"))
 	else:
 		spin_t = 0.45
 		skill_t = 0.5 * immune
@@ -555,8 +614,6 @@ func do_skill(move: Vector3) -> void:
 			burst_t = maxf(burst_t, 0.35 * amp)
 		game.feed(team, "ROULETTE!", (8 if near else 0) * amp, near)
 	game.ball.charge = clampf(game.ball.charge + charge_delta, 0.0, 1.0)  # after any kick, which would reset it
-	if dodge:
-		game.comic("DODGED!", global_position, Color("ffe100"), 0.9)
 	game.sfx.play("skill")
 
 
@@ -585,7 +642,6 @@ func try_dodge() -> bool:
 	elif randf() < 0.5:
 		side = -side
 	knock = side * 9.0
-	game.comic("DODGED!", global_position, Color("ffe100"), 0.9)
 	game.burst(global_position + Vector3.UP, 12)
 	game.sfx.play("skill")
 	if team == game.vessel.bond:
@@ -663,8 +719,8 @@ func _shoulder(o: Player) -> void:
 		b.kick(o, d * 3.0 + mv * 0.4 + Vector3.UP * 2.0, "loose")
 		b.no_pickup[o] = game.t + 0.6
 		o.stun_t = maxf(o.stun_t, 0.35)
+		game.sfx.pain(o.ch.get("female", false))
 		game.feed(team, "SHOULDER!", 8, o)
-		game.comic("WHAM!", o.global_position, st.color)
 		game.shake(0.3)
 		game.sfx.play("bam")
 
@@ -850,7 +906,6 @@ func _keeper_push() -> void:
 	if near:
 		push_cd = 0.6
 		facing = (near.global_position - global_position).normalized()
-		game.comic("SHOVE!", near.global_position, st.color, 0.9)
 		game.shake(0.25)
 		game.sfx.play("bam")
 
@@ -878,7 +933,6 @@ func _check_beaten() -> void:
 		elif dot < -0.3 and game.t - beat_watch.get(o, -10.0) < 1.0:
 			beat_watch.erase(o)
 			game.feed(team, "ROUNDED THE KEEPER!" if o.is_keeper else "BEAT HIM!", 14 if o.is_keeper else 10, o)
-			game.comic("SKIP!", o.global_position, Vessel.KINDS[o.sig].color, 0.8)
 
 
 func _nearest_opponent(r: float) -> Player:

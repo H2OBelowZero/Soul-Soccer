@@ -44,6 +44,12 @@ var song_list: VBoxContainer
 var shuffle_btn: Button
 var play_btn: Button
 var music_back := &"main"
+var restart_btn: Control
+var lan_menu: Control
+var lan_info: Label
+var lan_list: VBoxContainer
+var lan_ip: LineEdit
+var wait_label: Label
 
 
 # ------------------------------------------------------------------ inner widgets
@@ -183,7 +189,15 @@ func _ready() -> void:
 	_build_controls()
 	_build_music()
 	_build_pause()
+	_build_lan()
+	_build_wait()
+	game.net.linked_changed.connect(_net_linked)
+	game.net.hosts_changed.connect(_lan_refresh)
+	get_tree().set_quit_on_go_back(false)   # Android back = ui_cancel, see _notification
 	Jukebox.changed.connect(_refresh_music)
+	get_viewport().gui_focus_changed.connect(func(c: Control) -> void:
+		if current != NONE and c is BaseButton:
+			game.sfx.play("ui_move"))
 	_refresh_music()
 	_go(NONE)
 
@@ -198,17 +212,29 @@ func _unhandled_input(event: InputEvent) -> void:
 	var start_pad := jb != null and jb.pressed and jb.button_index == JOY_BUTTON_START
 	if not (event.is_action_pressed("ui_cancel") or start_pad):
 		return
+	if _cancel():
+		get_viewport().set_input_as_handled()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_cancel()
+
+
+## Esc / pad Start / Android back. False when there was nothing to do.
+func _cancel() -> bool:
 	if current == NONE:
-		if game.state == Game.S.TITLE:
-			return
+		if game.state == Game.S.TITLE or game.state == Game.S.OVER:
+			return false
 		pause()
 	elif current == &"pause":
 		resume()
 	elif current in [&"title", &"main"]:
-		return
+		return false
 	else:
+		game.sfx.play("ui_back")
 		_back()
-	get_viewport().set_input_as_handled()
+	return true
 
 
 # ------------------------------------------------------------------ navigation
@@ -220,7 +246,8 @@ func show_main() -> void:
 
 
 func pause() -> void:
-	get_tree().paused = true
+	get_tree().paused = not Net.active()   # over LAN the other player keeps playing: the match cannot stop
+	restart_btn.visible = not Net.active()
 	_go(&"pause")
 
 
@@ -233,7 +260,7 @@ func _go(page: StringName) -> void:
 	current = page
 	for k: StringName in pages:
 		pages[k].visible = k == page
-	var paused := get_tree().paused
+	var paused := get_tree().paused or (Net.active() and game.state != Game.S.TITLE)
 	backdrop.visible = page != NONE and not paused
 	dim.visible = page != NONE and paused
 	Jukebox.set_menu(page != NONE)
@@ -249,10 +276,17 @@ func _go(page: StringName) -> void:
 
 func _back() -> void:
 	match current:
+		&"lan", &"wait":
+			_lan_back()
 		&"stage":
-			_go(&"main")
+			if Net.active():
+				_lan_back()
+			else:
+				_go(&"main")
 		&"team":
-			if two_p and pass_team != game.human_team:
+			if Net.active():
+				_lan_back()
+			elif two_p and pass_team != game.human_team:
 				_begin_squad(game.human_team)   # P2 steps back to P1's picks
 			else:
 				_go(&"stage")
@@ -290,7 +324,10 @@ func _open(page: StringName) -> void:
 
 
 func _start(two: bool) -> void:
+	game.sfx.play("ui_start")
 	_go(NONE)
+	if Net.is_host():
+		game.net.begin()
 	game.start_match(two)
 
 
@@ -349,7 +386,7 @@ func _toggle_pick(i: int) -> void:
 		sel.erase(i)
 	elif sel.size() < 3:
 		sel.append(i)
-	game.sfx.play("ui")
+	game.sfx.play("ui_party" if sel.has(i) else "ui_side")
 	_sync_squad()
 
 
@@ -357,6 +394,7 @@ func _pick_team(team: int) -> void:
 	if two_p:
 		return
 	game.human_team = team
+	game.sfx.play("ui_tab")
 	game.hud.show_title()
 	_begin_squad(team)
 	team_tabs[team].call_deferred("grab_focus")
@@ -376,8 +414,16 @@ func _confirm_squad() -> void:
 	if sel.size() < 3:
 		return
 	game.picks[pass_team] = sel.duplicate()
+	if Net.is_client():
+		game.net.send_picked(sel)
+		_wait("WAITING FOR THE HOST TO START...")
+		return
 	if two_p and pass_team == game.human_team:
-		_begin_squad(1 - game.human_team)
+		if Net.is_host():
+			game.net.ask_pick()   # player 2 picks on their own device
+			_wait("WAITING FOR PLAYER 2 TO PICK THEIR TEAM...")
+		else:
+			_begin_squad(1 - game.human_team)
 		return
 	if not two_p:
 		var pool := range(UI.CHARS.size()).filter(func(i: int) -> bool: return not sel.has(i))
@@ -409,7 +455,7 @@ func _row(parent: Control, title: String, getter: Callable, stepper: Callable, n
 	c.set_value(getter.call())
 	c.stepped.connect(func(d: int) -> void:
 		stepper.call(d)
-		game.sfx.play("ui")
+		game.sfx.play("ui_side")
 		_sync())
 	rows.append([c, getter])
 	parent.add_child(c)
@@ -539,35 +585,31 @@ func _menu_list(p: Control, left: float, top: float, w: float, items: Array, see
 func _build_title() -> void:
 	var p := _page(&"title")
 	var f := UI.font()
-	var a := UI.art(func(c: Control) -> void:
-		var s := c.size
-		var shirt: Color = game.TEAMS[0].color
-		var trim: Color = game.TEAMS[0].alt
-		UI.portrait(c, Rect2(s.x * 0.02, s.y * 0.12, s.x * 0.17, s.y * 0.7), UI.CHARS[4], Color("1a1a2e"), trim)
-		UI.portrait(c, Rect2(s.x * 0.12, s.y * 0.08, s.x * 0.17, s.y * 0.74), UI.CHARS[1], Color("2a0f10"), UI.RED)
-		UI.portrait(c, Rect2(s.x * 0.24, s.y * 0.14, s.x * 0.17, s.y * 0.68), UI.CHARS[3], Color("14224a"), UI.BLUE)
-		UI.portrait(c, Rect2(s.x * 0.06, s.y * 0.26, s.x * 0.3, s.y * 0.78), UI.CHARS[0], shirt, trim)
-		UI.brush(c, Vector2(s.x * 0.4, s.y * 0.4), Vector2(s.x * 1.02, s.y * 0.37), 300, UI.INK, 61)
-		UI.crown(c, Rect2(s.x * 0.44, s.y * 0.2, 110, 70), UI.YELLOW)
-		c.draw_set_transform(Vector2(s.x * 0.44, s.y * 0.43), -0.04, Vector2.ONE)
-		c.draw_string(f, Vector2(0, 0), "SOUL", HORIZONTAL_ALIGNMENT_LEFT, -1, 200, UI.WHITE)
-		c.draw_string(f, Vector2(s.x * 0.06, 150), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 170, UI.YELLOW)
-		c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		c.draw_string(f, Vector2(s.x * 0.45, s.y * 0.7), "STREET'S OUR PITCH.  OUR RULES.", HORIZONTAL_ALIGNMENT_LEFT, -1, 40, UI.YELLOW)
-		c.draw_string(f, Vector2(s.x * 0.45, s.y * 0.74), "PFL  ·  1 PAL STREET SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, UI.WHITE))
-	a.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	p.add_child(a)
-	var b := UI.button("PRESS  ENTER  TO START", func() -> void:
+	var art := UI.art(func(c: Control) -> void:
+		UI.brush(c, Vector2(-60, 330), Vector2(c.size.x + 120, 190), 340, UI.INK, 61)
+		var w1 := f.get_string_size("SOUL ", HORIZONTAL_ALIGNMENT_LEFT, -1, 190).x
+		var w2 := f.get_string_size("SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 190).x
+		var x := (c.size.x - w1 - w2) * 0.5
+		UI.crown(c, Rect2(c.size.x * 0.5 - 70, 150, 140, 88), UI.YELLOW)
+		c.draw_string(f, Vector2(x, 480), "SOUL ", HORIZONTAL_ALIGNMENT_LEFT, -1, 190, UI.WHITE)
+		c.draw_string(f, Vector2(x + w1, 480), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 190, UI.YELLOW)
+		UI.brush(c, Vector2(c.size.x * 0.5 - 420, 560), Vector2(c.size.x * 0.5 + 420, 560), 70, UI.YELLOW, 62)
+		c.draw_string(f, Vector2(0, 580), "SOWETO FOOTBALL BUILDS DREAMS", HORIZONTAL_ALIGNMENT_CENTER, c.size.x, 44, UI.INK))
+	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	p.add_child(art)
+	var go := UI.label("TAP TO START" if Touch.available() else "PRESS  ENTER  /  START", 48, UI.WHITE, 8)
+	go.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	go.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	go.offset_top = -330
+	p.add_child(go)
+	create_tween().set_loops().set_ignore_time_scale(true).tween_property(go, "modulate:a", 0.25, 0.8).from(1.0).set_trans(Tween.TRANS_SINE)
+	var b := UI.button("", func() -> void:   # the whole screen is the start button: Enter, pad or a tap
 		booted = true
-		game.sfx.play("ui")
-		_go(&"main"), 620, 90, &"Cta")
-	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.add_theme_font_size_override("font_size", 44)
-	b.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	b.offset_left = -700
-	b.offset_right = -70
-	b.offset_top = -170
-	b.offset_bottom = -80
+		game.sfx.play("ui_start")
+		_go(&"main"))
+	b.flat = true
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	b.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	p.add_child(b)
 	_footer(p, "TITLE PAGE", [["x", "START"]])
 
@@ -578,6 +620,7 @@ func _build_main() -> void:
 	_menu_list(p, 90, 250, 600, [
 		["1 PLAYER", _open_stage.bind(false)],
 		["2 PLAYERS  ·  LOCAL", _open_stage.bind(true)],
+		["2 PLAYERS  ·  LAN", _open_lan],
 		["SETTINGS", _open.bind(&"settings")],
 		["MUSIC", _open.bind(&"music")],
 		["CONTROLS", _open.bind(&"controls")],
@@ -859,13 +902,164 @@ func _build_pause() -> void:
 		c.draw_string(f, Vector2(90, 118), "PAUSE  /  MATCH MENU", HORIZONTAL_ALIGNMENT_LEFT, -1, 32, UI.INK))
 	_put(hd, 640, 150, 640, 140)
 	p.add_child(hd)
-	_menu_list(p, 660, 300, 600, [
+	var pause_list := _menu_list(p, 660, 300, 600, [
 		["RESUME", resume],
 		["SETTINGS", _open.bind(&"settings")],
 		["MUSIC", _open.bind(&"music")],
 		["CONTROLS", _open.bind(&"controls")],
 		["RESTART MATCH", _restart],
 		["QUIT TO MENU", _to_title]], 5)
+	restart_btn = pause_list.get_child(0).get_child(4)
+
+
+# ------------------------------------------------------------------ LAN (one pair: host = P1, client = P2)
+
+func _open_lan() -> void:
+	back_to = &"main"
+	lan_info.text = ""
+	lan_ip.visible = false
+	for c in lan_list.get_children():
+		c.queue_free()
+	_go(&"lan")
+
+
+func _build_lan() -> void:
+	var p := _page(&"lan")
+	_header(p, "LAN PLAY", "TWO DEVICES  ·  SAME WI-FI")
+	lan_menu = _menu_list(p, 90, 250, 600, [
+		["HOST A GAME", _lan_host],
+		["JOIN A GAME", _lan_join],
+		["BACK", func() -> void: _go(&"main")]], 7)
+	var panel := UI.Ink.new(Color(UI.INK, 0.9), UI.BLUE, 63)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 14)
+	panel.add_child(v)
+	lan_info = UI.label("", 30)
+	lan_info.autowrap_mode = TextServer.AUTOWRAP_WORD
+	lan_info.custom_minimum_size = Vector2(920, 0)
+	v.add_child(lan_info)
+	lan_list = VBoxContainer.new()
+	lan_list.add_theme_constant_override("separation", 10)
+	v.add_child(lan_list)
+	lan_ip = LineEdit.new()
+	lan_ip.placeholder_text = "OR TYPE THE HOST IP, e.g. 192.168.1.5"
+	lan_ip.custom_minimum_size = Vector2(920, 64)
+	lan_ip.add_theme_font_size_override("font_size", 30)
+	lan_ip.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_URL
+	lan_ip.text_submitted.connect(func(t: String) -> void: _lan_connect(t))
+	lan_ip.visible = false
+	v.add_child(lan_ip)
+	p.add_child(panel)
+	_put(panel, 760, 250, 1040, 560)
+	_footer(p, "LAN PLAY", [["x", "SELECT"], ["o", "BACK"]])
+
+
+func _lan_host() -> void:
+	if not game.net.host():
+		lan_info.text = "COULD NOT START HOSTING.\nIS ANOTHER COPY OF THE GAME ALREADY HOSTING?"
+		return
+	lan_ip.visible = false
+	for c in lan_list.get_children():
+		c.queue_free()
+	var ips := game.net.local_ips()
+	lan_info.text = "HOSTING  ·  YOU ARE PLAYER 1\nWAITING FOR PLAYER 2 TO JOIN...\n\nTHEY SHOULD SEE YOU AUTOMATICALLY. IF NOT, TYPE:  %s" % ("  /  ".join(ips) if ips.size() > 0 else "(connect to Wi-Fi first)")
+	var b := UI.button("CANCEL", _lan_back, 300, 64)
+	lan_list.add_child(b)
+	b.call_deferred("grab_focus")
+
+
+func _lan_join() -> void:
+	game.net.search()
+	lan_ip.visible = true
+	_lan_refresh()
+
+
+func _lan_refresh() -> void:
+	if current != &"lan" or game.net.mode != Net.Mode.OFF:
+		return
+	for c in lan_list.get_children():
+		c.queue_free()
+	lan_info.text = "SEARCHING FOR A HOST ON THIS WI-FI..." if game.net.hosts.is_empty() else "TAP A GAME TO JOIN:"
+	for ip: String in game.net.hosts:
+		lan_list.add_child(UI.button("%s   ·   %s" % [game.net.hosts[ip].name, ip], _lan_connect.bind(ip), 900, 64))
+
+
+func _lan_connect(ip: String) -> void:
+	if ip.strip_edges() == "" or not game.net.join(ip):
+		lan_info.text = "THAT ADDRESS DOES NOT WORK."
+		return
+	lan_ip.visible = false
+	for c in lan_list.get_children():
+		c.queue_free()
+	lan_info.text = "CONNECTING TO %s ..." % ip
+
+
+## Leave the LAN set-up from any page: drop the link and go back to the main menu.
+func _lan_back() -> void:
+	game.net.close()
+	game.sfx.play("ui_back")
+	_go(&"main")
+
+
+func _net_linked() -> void:
+	if not game.net.linked or current != &"lan":
+		return
+	if Net.is_host():
+		_open_stage(true)   # the host sets the match up, player 2 picks their squad later
+	else:
+		lan_info.text = "CONNECTED  ·  YOU ARE PLAYER 2\nWAITING FOR THE HOST TO SET UP THE MATCH..."
+		var b := UI.button("LEAVE", _lan_back, 300, 64)
+		lan_list.add_child(b)
+		b.call_deferred("grab_focus")
+
+
+## Client: the host wants my three.
+func net_pick() -> void:
+	two_p = true
+	_begin_squad(1 - game.human_team)
+	_go(&"team")
+
+
+## Client: the match is on.
+func net_begin() -> void:
+	_go(NONE)
+
+
+## Host: player 2 picked, go.
+func net_started() -> void:
+	_start(true)
+
+
+func _build_wait() -> void:
+	var p := _page(&"wait")
+	_header(p, "PLEASE WAIT")
+	var panel := UI.Ink.new(Color(UI.INK, 0.9), UI.BLUE, 64)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 20)
+	panel.add_child(v)
+	wait_label = UI.label("", 36)
+	v.add_child(wait_label)
+	v.add_child(UI.button("CANCEL", _lan_back, 300, 64))
+	p.add_child(panel)
+	_put(panel, 90, 250, 1100, 240)
+
+
+func _wait(text: String) -> void:
+	wait_label.text = text
+	_go(&"wait")
+
+
+## A short note on whatever page is showing (link lost, etc).
+func toast(text: String) -> void:
+	var l := UI.label(text, 44, UI.YELLOW, 10)
+	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	l.offset_top = 40
+	root.add_child(l)
+	var tw := l.create_tween().set_ignore_time_scale(true)
+	tw.tween_interval(3.0)
+	tw.tween_property(l, "modulate:a", 0.0, 0.5)
+	tw.tween_callback(l.queue_free)
 
 
 func _build_music() -> void:

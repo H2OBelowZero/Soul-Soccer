@@ -36,6 +36,28 @@ const EVENTS := {
 	"roar": ["crowd", 7.0, 11.0, -3.0],      # full time
 }
 
+## Recorded one-offs that play as-is (no random pitch): game event -> file(s). A list picks one at random.
+const UI_DIR := "res://sounds/sfx/button_based_ui_sounds/"
+const FILES := {
+	"ui": [UI_DIR + "a_button.wav"],                 # confirm
+	"ui_move": [UI_DIR + "cursor_vertical.wav"],     # focus moved
+	"ui_side": [UI_DIR + "cursor_horzontal.wav"],    # value stepped / pick removed
+	"ui_start": [UI_DIR + "start_button.wav"],       # title start, kick-off
+	"ui_back": [UI_DIR + "x_button.wav"],
+	"ui_party": [UI_DIR + "party_up.wav"],           # squad member picked
+	"ui_rank": [UI_DIR + "rank_up.wav"],
+	"ui_tab": [UI_DIR + "bumpers/left_bumper/bumper5.wav", UI_DIR + "bumpers/left_bumper/bumper6.wav",
+			UI_DIR + "bumpers/left_bumper/bumper7.wav", UI_DIR + "bumpers/left_bumper/bumper8.wav",
+			UI_DIR + "bumpers/left_bumper/bumper9.wav"],
+	"pain_m": ["res://sounds/sfx/vc_cloud_damage01.wav", "res://sounds/sfx/vc_cloud_damage02.wav", "res://sounds/sfx/vc_cloud_damage03.wav"],
+	"pain_f": ["res://sounds/sfx/snd_vc_Bayonetta_Damage01.wav", "res://sounds/sfx/snd_vc_Bayonetta_DamageFly03.wav"],
+}
+const CHARGE_LOOP := "res://sounds/sfx/shield_charge_dervish/new_charge/loop.wav"
+## Charge-level pings: the three vuvu samples at random. Pitch climbs by even harmonics (2nd, 4th, 6th of the
+## fundamental = 1x, 2x, 3x the first ping) and holds at the top level until the charge drops a level.
+const LEVEL_PINGS := ["res://sounds/sfx/vuvu.MP3", "res://sounds/sfx/vuvu1.MP3", "res://sounds/sfx/vuvu2.MP3"]
+const LEVEL_PITCH := [1.0, 2.0, 3.0]
+
 const RATE := 22050
 const BPM := 112.0
 # Log-drum lines per bar: step -> Hz.
@@ -48,6 +70,10 @@ var pool: Array[AudioStreamPlayer] = []
 var next := 0
 var crowd: AudioStreamPlayer       # looping bed
 var crowd_fx: AudioStreamPlayer    # one crowd reaction at a time
+var files := {}                    # FILES loaded: event -> Array[AudioStream]
+var pings: Array[AudioStream] = []
+var charge_p: AudioStreamPlayer    # looping wind-up while the shoot button is held
+var ping_p: AudioStreamPlayer      # charge-level indicator
 var _lp := 0.0
 var _lp2 := 0.0
 
@@ -82,6 +108,18 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		pool.append(p)
+	for ev: String in FILES:
+		files[ev] = []
+		for path: String in FILES[ev]:
+			files[ev].append(load(path))
+	for path: String in LEVEL_PINGS:
+		pings.append(load(path))
+	charge_p = AudioStreamPlayer.new()
+	charge_p.stream = load(CHARGE_LOOP)
+	charge_p.finished.connect(charge_p.play)   # loop: the sample's own loop flag is off
+	add_child(charge_p)
+	ping_p = AudioStreamPlayer.new()
+	add_child(ping_p)
 	crowd_fx = AudioStreamPlayer.new()
 	add_child(crowd_fx)
 	crowd = AudioStreamPlayer.new()
@@ -118,6 +156,16 @@ static func _has(ranges: Array, n: int) -> bool:
 
 
 func play(sound: String, db := 0.0) -> void:
+	if not sound.begins_with("ui"):
+		Net.fx(&"sfx", [sound, db])
+	if files.has(sound):
+		var p := pool[next]
+		next = (next + 1) % pool.size()
+		p.stream = files[sound].pick_random()
+		p.volume_db = db
+		p.pitch_scale = 1.0
+		p.play()
+		return
 	var spec: Array = EVENTS.get(sound, [])
 	var samples: Array = pools.get(sound, [])
 	var stream: AudioStream = samples.pick_random() if not samples.is_empty() else bank.get(sound)
@@ -133,6 +181,28 @@ func play(sound: String, db := 0.0) -> void:
 	p.volume_db = db + (spec[3] if spec and not samples.is_empty() else 0.0)
 	p.pitch_scale = randf_range(0.94, 1.06)
 	p.play()
+
+
+## Pain voice-over for a tackled player: male or female set.
+func pain(female: bool) -> void:
+	play("pain_f" if female else "pain_m")
+
+
+## Wind-up loop while a shot charges; its pitch follows the charge (0..1).
+func charge_loop(on: bool, charge := 0.0) -> void:
+	if on:
+		charge_p.pitch_scale = 0.85 + 0.5 * charge
+		if not charge_p.playing:
+			charge_p.play()
+	else:
+		charge_p.stop()
+
+
+## Charge level (1..LEVEL_PITCH.size()) changed: ping a random vuvu at that level's harmonic pitch.
+func level_ping(level: int) -> void:
+	ping_p.stream = pings.pick_random()
+	ping_p.pitch_scale = LEVEL_PITCH[clampi(level, 1, LEVEL_PITCH.size()) - 1]
+	ping_p.play()
 
 
 ## Cut the crowd reaction (new match / back to the menu).
