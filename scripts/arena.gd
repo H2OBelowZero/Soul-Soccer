@@ -146,6 +146,8 @@ static func _environment(root: Node3D) -> void:
 	env.ambient_light_color = Color("9a8fc0")
 	env.ambient_light_energy = 0.7
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	if RenderingServer.get_current_rendering_method() == "gl_compatibility":
+		env.tonemap_exposure = 0.65   # the GL renderer lights the same scene much hotter than Forward+/Mobile
 	env.glow_enabled = true
 	env.glow_intensity = 0.6
 	env.adjustment_enabled = true

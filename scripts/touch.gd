@@ -23,7 +23,8 @@ var _on := {}           # action -> bool currently pressed by us
 
 
 static func available() -> bool:
-	return OS.has_feature("mobile") or OS.get_cmdline_user_args().has("--touch")
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios") \
+			or OS.get_cmdline_user_args().has("--touch")
 
 
 func _ready() -> void:

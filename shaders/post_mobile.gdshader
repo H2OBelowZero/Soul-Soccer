@@ -4,6 +4,7 @@ render_mode unshaded, fog_disabled, depth_draw_never, depth_test_disabled, cull_
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform bool use_depth = true;   // WebGL hands the shader a blank depth buffer, so the web build keeps only the halftone
 uniform float line_width = 2.0;
 uniform float depth_threshold = 0.05;
 uniform float dot_size = 6.0;
@@ -28,7 +29,7 @@ void fragment() {
 	for (int i = 0; i < 4; i++) {
 		dd = max(dd, abs(lin_depth(uv + offs[i], INV_PROJECTION_MATRIX) - d0));
 	}
-	float edge = step(depth_threshold * d0, dd);
+	float edge = use_depth ? step(depth_threshold * d0, dd) : 0.0;
 	edge *= 1.0 - smoothstep(55.0, 85.0, d0); // no ink on the distant skyline
 
 	vec3 col = texture(screen_tex, uv).rgb;

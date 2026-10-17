@@ -619,14 +619,19 @@ func _build_title() -> void:
 func _build_main() -> void:
 	var p := _page(&"main")
 	_header(p, "MAIN MENU", "PICK YOUR GAME")
-	_menu_list(p, 90, 250, 600, [
+	var web := OS.has_feature("web")   # browsers have no raw UDP/ENet sockets and a tab cannot quit itself
+	var items := [
 		["1 PLAYER", _open_stage.bind(false)],
-		["2 PLAYERS  ·  LOCAL", _open_stage.bind(true)],
-		["2 PLAYERS  ·  LAN", _open_lan],
+		["2 PLAYERS  ·  LOCAL", _open_stage.bind(true)]]
+	if not web:
+		items.append(["2 PLAYERS  ·  LAN", _open_lan])
+	items.append_array([
 		["SETTINGS", _open.bind(&"settings")],
 		["MUSIC", _open.bind(&"music")],
-		["CONTROLS", _open.bind(&"controls")],
-		["QUIT", get_tree().quit]])
+		["CONTROLS", _open.bind(&"controls")]])
+	if not web:
+		items.append(["QUIT", get_tree().quit])
+	_menu_list(p, 90, 250, 600, items)
 	var f := UI.font()
 	var tag := UI.art(func(c: Control) -> void:
 		UI.brush(c, Vector2(0, 150), Vector2(c.size.x, 120), 230, UI.RED, 71)

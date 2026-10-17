@@ -156,7 +156,8 @@ func _add_post_process() -> void:
 	q.size = Vector2(2, 2)
 	var m := ShaderMaterial.new()
 	m.shader = load("res://shaders/post.gdshader" if RenderingServer.get_current_rendering_method() == "forward_plus" else "res://shaders/post_mobile.gdshader")
-	m.render_priority = -128   # first in the transparent pass: it paints over everything drawn before it, so transparent things must come after
+	m.set_shader_parameter("use_depth", not OS.has_feature("web"))
+	m.render_priority = -128  # first in the transparent pass: it paints over everything drawn before it, so transparent things must come after
 	var mi := MeshInstance3D.new()
 	mi.mesh = q
 	mi.material_override = m
