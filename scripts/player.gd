@@ -37,8 +37,15 @@ var shove_t := 0.0
 var push_cd := 0.0          # keeper shove cooldown
 var was_charging := false
 var charging := false       # holding shoot: the charge itself lives on the ball
+var pass_t := -1.0          # >= 0 while pass is held with the ball: a tap passes along the ground, a hold lobs
+var lobbing := false        # pass held long enough to be a lob: it is charging the ball, slowly
 
 const CHARGE_T := 1.2       # seconds to a full charge
+const LOB_HOLD := 0.22      # pass held this long = lob instead of a ground pass
+const LOB_CHARGE_T := 3.0   # seconds to a full charge while lobbing (the shot is 2.5x quicker)
+const FAKE_MIN := 0.06      # wind-up needed before skill counts as a fake-out
+const FAKE_RANGE := 3.5     # a defender this close can bite on a fake
+const LOB_DRAG := 1.12      # lobs are launched this much harder: the ball's linear damping eats the rest
 const DODGE_COST := 15.0    # ball charge a dodge burns
 const DODGE_WINDOW := 0.22  # a dodge only lands if the hit would connect within this many seconds
 const DODGE_T := 0.4        # untouchable time after a dodge
@@ -127,7 +134,7 @@ func _build_rig() -> void:
 
 	var glow := StandardMaterial3D.new()
 	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow.albedo_color = Color("ffe100")
+	glow.albedo_color = UI.SKY
 	var tm := TorusMesh.new()
 	tm.inner_radius = 0.55
 	tm.outer_radius = 0.7
@@ -207,6 +214,8 @@ func set_human(on: bool) -> void:
 	arrow.visible = on
 	buffered_t = -10.0
 	charging = false
+	pass_t = -1.0
+	lobbing = false
 
 
 ## Input action for this player's pad: P1 uses the plain names, P2 the p2_ ones.
@@ -232,6 +241,8 @@ func reset_to(pos: Vector3) -> void:
 	dodge_cd = 0.0
 	spin_t = 0.0
 	charging = false
+	pass_t = -1.0
+	lobbing = false
 	facing = Vector3(dir, 0, 0)
 
 
@@ -348,12 +359,13 @@ func _process(_delta: float) -> void:
 	else:
 		anim.speed_scale = clip[1]
 	arrow.position.y = 2.6 + sin(game.t * 6.0) * 0.08
-	var ch := game.ball.charge if charging else 0.0
-	if charging or was_charging:
-		game.sfx.charge_loop(charging, ch)
-	was_charging = charging
+	var winding := charging or lobbing
+	var ch := game.ball.charge if winding else 0.0
+	if winding or was_charging:
+		game.sfx.charge_loop(winding, ch)
+	was_charging = winding
 	ring.scale = Vector3(1.0 + ch * 0.8, 0.1, 1.0 + ch * 0.8)
-	(ring.material_override as StandardMaterial3D).albedo_color = Color("ffe100").lerp(Color("ff3b30"), ch)
+	(ring.material_override as StandardMaterial3D).albedo_color = UI.SKY.lerp(UI.RED, ch)
 
 
 # ------------------------------------------------------------------ human
@@ -376,14 +388,36 @@ func _human_input() -> Vector3:
 			b.charge = minf(was + get_physics_process_delta_time() / CHARGE_T, 1.0)
 			if was < 1.0 and b.charge >= 1.0:
 				game.sfx.play("power")
-		if Input.is_action_just_pressed(_a("pass")):
+		if pass_t >= 0.0:  # pass held: a tap is a ground pass, a hold is a lob that charges the ball slowly
+			var dt := get_physics_process_delta_time()
+			pass_t += dt
+			if pass_t >= LOB_HOLD:
+				lobbing = true
+				var was := game.ball.charge
+				game.ball.charge = minf(was + dt / LOB_CHARGE_T, 1.0)
+				if was < 1.0 and game.ball.charge >= 1.0:
+					game.sfx.play("power")
+		if Input.is_action_just_pressed(_a("skill")) and (charging or pass_t >= FAKE_MIN):
 			combo_used = true
-			do_pass(lb and game.spend(team, "VISION PASS!", Game.QUICK_COST), move)  # keeps the charge
+			do_fakeout()
+		elif Input.is_action_just_pressed(_a("pass")):
+			combo_used = true
+			if charging:
+				do_pass(lb and game.spend(team, "VISION PASS!", Game.QUICK_COST), move)  # keeps the charge
+			else:
+				pass_t = 0.0
 		elif Input.is_action_just_pressed(_a("shoot")):
 			combo_used = true
+			pass_t = -1.0
+			lobbing = false
 			charging = true
 		elif charging and not Input.is_action_pressed(_a("shoot")):
 			do_shoot(lb and game.soul_shot(team, "SOUL SHOT!"), false, move.z)
+		elif pass_t >= 0.0 and not Input.is_action_pressed(_a("pass")):
+			var lob := lobbing
+			pass_t = -1.0
+			lobbing = false
+			do_pass(not lob and lb and game.spend(team, "VISION PASS!", Game.QUICK_COST), move, lob)
 		elif Input.is_action_just_pressed(_a("skill")):
 			combo_used = true
 			if lb and game.soul_shot(team, "CURVE SHOT!"):
@@ -409,6 +443,8 @@ func _human_input() -> Vector3:
 		if Input.is_action_just_pressed(_a("skill")):
 			try_dodge()
 		charging = false
+		pass_t = -1.0
+		lobbing = false
 	if charging:  # planted while winding up
 		sprinting = false
 		return Vector3.ZERO
@@ -417,7 +453,8 @@ func _human_input() -> Vector3:
 
 # ------------------------------------------------------------------ actions
 
-func do_pass(quick := false, hint := Vector3.ZERO) -> void:
+## lob: chipped over the defenders; a bigger ball charge hangs it higher and sends it further.
+func do_pass(quick := false, hint := Vector3.ZERO, lob := false) -> void:
 	if not has_ball():
 		return
 	var aim := hint.normalized() if hint.length() > 0.2 else facing
@@ -439,9 +476,12 @@ func do_pass(quick := false, hint := Vector3.ZERO) -> void:
 	if perk == Vessel.Kind.SPEED or perk == Vessel.Kind.VISION:
 		speed *= 1.15
 	var target: Vector3
+	var t_air := 0.0   # lob flight time
 	if best:  # always at a teammate: the stick/facing only picks which one
-		var lead := best.global_position.distance_to(global_position) / speed
-		target = best.global_position + best.mv * lead * 0.8
+		var d0 := best.global_position.distance_to(global_position)
+		if lob:
+			t_air = _lob_time(d0, speed, b.charge)
+		target = best.global_position + best.mv * (t_air if lob else d0 / speed) * 0.8
 	else:
 		best = null  # no one there: play it into space (or off the wall)
 		target = global_position + aim * 9.0
@@ -449,14 +489,51 @@ func do_pass(quick := false, hint := Vector3.ZERO) -> void:
 	flat.y = 0.0
 	var pdir := flat.normalized()
 	var vel := pdir * speed + Vector3.UP * (0.6 + maxf(flat.length() - 11.0, 0.0) * 0.35)
+	if lob:
+		t_air = _lob_time(flat.length(), speed, b.charge)
+		vel = flat / t_air * LOB_DRAG + Vector3.UP * (0.5 * 9.8 * Ball.GRAV * t_air * LOB_DRAG)
 	if facing.dot(pdir) < -0.3:
 		game.steady(team, "HEEL PASS!", 1.5)
 	if game.t - received_t < 0.45:
 		game.steady(team, "ONE TOUCH!", 1.0)
 	_act("soccer_pass", 0.5)
 	b.kick(self, vel, "pass", best, 0.0, false, quick)
+	if lob:
+		if human:
+			game.hud.popup(team, "LOB!" if b.charge < 0.6 else "BIG LOB!")
 	last_pass_to = best
 	last_pass_t = game.t
+
+
+## Flight time of a lob over d metres: no flatter than a chip, and a charged ball hangs longer (higher, further).
+func _lob_time(d: float, speed: float, charge: float) -> float:
+	return maxf(d / (speed * 0.75), lerpf(1.0, 1.6, charge))
+
+
+## Fake-out: abort a shot wind-up or a held pass and keep the ball. Timed well (a defender lunging in, or one
+## closing to block) it sells: a tackle-immune beat, ball charge, and a blocker bites. In the open it just costs charge.
+func do_fakeout() -> void:
+	var shot := charging
+	charging = false
+	pass_t = -1.0
+	lobbing = false
+	var b := game.ball
+	var lunger := _lunger()
+	var blocker := lunger if lunger else _opponent_ahead(2.8)
+	var live := skill_cd <= 0.0 and blocker != null
+	skill_cd = 0.7
+	_act("kick_soccerball" if shot else "soccer_pass", 0.3)   # the swing is cut short: that is the feint
+	var text := "FAKE SHOT!" if shot else "FAKE PASS!"
+	if live:
+		skill_t = 0.6 if lunger else 0.35
+		b.charge = clampf(b.charge + (0.45 if lunger else 0.3), 0.0, 1.0)
+		if not blocker.human:
+			blocker.stun_t = maxf(blocker.stun_t, 0.35)
+		game.feed(team, text, 14 if lunger else 8, blocker)
+	else:
+		b.charge = clampf(b.charge - 0.15, 0.0, 1.0)   # nobody bought it
+		game.feed(team, text, 0)
+	game.sfx.play("skill")
 
 
 func do_shoot(power := false, curve := false, aim_hint := 0.0) -> void:
@@ -570,10 +647,7 @@ func do_skill(move: Vector3) -> void:
 	var amp := 1.0 + game.ball.charge  # a charged skill hits up to twice as hard
 	charging = false
 	# Risk decides the charge: dodging a tackle that's coming in gains some, a skill in open space loses some.
-	var dodge := false
-	for o: Player in game.team_players[1 - team]:
-		if o.lunge_t > 0.0 and not o.diving and _flat(o.global_position - global_position) < 3.5:
-			dodge = true
+	var dodge := _lunger() != null
 	var charge_delta := 0.4 if dodge else (0.0 if _nearest_opponent(3.0) else -0.3)
 	var trick := game.vessel.perk(team) == Vessel.Kind.TRICK
 	var awake := game.vessel.stage() >= Vessel.Stage.STIRRING
@@ -933,6 +1007,14 @@ func _check_beaten() -> void:
 		elif dot < -0.3 and game.t - beat_watch.get(o, -10.0) < 1.0:
 			beat_watch.erase(o)
 			game.feed(team, "ROUNDED THE KEEPER!" if o.is_keeper else "BEAT HIM!", 14 if o.is_keeper else 10, o)
+
+
+## An opponent mid-lunge (not a keeper dive) at me within FAKE_RANGE.
+func _lunger() -> Player:
+	for o: Player in game.team_players[1 - team]:
+		if o.lunge_t > 0.0 and not o.diving and _flat(o.global_position - global_position) < FAKE_RANGE:
+			return o
+	return null
 
 
 func _nearest_opponent(r: float) -> Player:

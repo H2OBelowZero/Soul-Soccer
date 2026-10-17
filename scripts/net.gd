@@ -274,7 +274,7 @@ func _pack() -> PackedFloat32Array:
 			float(g.players.find(b.carrier)), float(g.players.find(b.last_touch)),
 			float(maxi(KICKS.find(b.kick_type), 0)), g.t - b.kick_t, b.charge])
 	for p in g.players:
-		var flags := (1 if p.diving else 0) | (2 if p.charging else 0) | (4 if p.human else 0)
+		var flags := (1 if p.diving else 0) | (2 if p.charging or p.lobbing else 0) | (4 if p.human else 0)
 		f.append_array([p.global_position.x, p.global_position.y, p.global_position.z, p.velocity.x, p.velocity.z,
 				p.facing.x, p.facing.z, p.mv.x, p.mv.z, p.stun_t, p.lunge_t, p.spin_t, p.push_cd,
 				float(maxi(ACTS.find(p.act), 0)), p.act_end - g.t, float(flags)])

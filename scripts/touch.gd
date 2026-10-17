@@ -7,7 +7,7 @@ const STICK_R := 150.0
 const BTNS := [   # action, label, centre (1920x1080 canvas), radius, colour
 	["shoot", "SHOT", Vector2(1730, 900), 105.0, UI.RED],
 	["pass", "PASS", Vector2(1490, 940), 85.0, UI.BLUE],
-	["skill", "SKILL", Vector2(1530, 720), 80.0, UI.YELLOW],
+	["skill", "SKILL", Vector2(1530, 720), 80.0, UI.WHITE],
 	["ability", "SOUL", Vector2(1770, 680), 80.0, Color("b04dff")],
 	["sprint", "RUN", Vector2(1290, 880), 70.0, Color("39ff14")],
 ]

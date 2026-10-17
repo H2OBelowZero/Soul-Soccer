@@ -120,10 +120,10 @@ func _label(text: String, size: int, color: Color, outline := 10) -> Label:
 func _build_logo() -> void:
 	var a := UI.art(func(c: Control) -> void:
 		UI.brush(c, Vector2(-30, 50), Vector2(c.size.x, 70), 120, UI.INK, 5)
-		UI.crown(c, Rect2(30, 4, 40, 25), UI.YELLOW)
+		UI.crown(c, Rect2(30, 4, 40, 25), UI.RED)
 		var f := UI.font()
 		c.draw_string(f, Vector2(30, 70), "SOUL", HORIZONTAL_ALIGNMENT_LEFT, -1, 56, UI.WHITE)
-		c.draw_string(f, Vector2(150, 70), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 56, UI.YELLOW))
+		c.draw_string(f, Vector2(150, 70), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 56, UI.RED))
 	a.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	a.offset_right = 380
 	a.offset_bottom = 110
@@ -146,7 +146,7 @@ func _build_scoreboard() -> void:
 	var mid := VBoxContainer.new()
 	mid.add_theme_constant_override("separation", -6)
 	row.add_child(mid)
-	score_label = _label("0 - 0", 56, UI.YELLOW, 6)
+	score_label = _label("0 - 0", 56, UI.RED, 6)
 	score_label.custom_minimum_size = Vector2(190, 0)
 	mid.add_child(score_label)
 	clock_label = _label("3:00", 38, UI.WHITE, 4)
@@ -199,7 +199,7 @@ func _build_squads() -> void:
 	group.add_child(squads)
 
 
-## Portrait cards for each human squad: the pad-controlled player is lit yellow, the headband bar is their soul.
+## Portrait cards for each human squad: the pad-controlled player is lit red, the headband bar is their soul.
 func _refresh_squads() -> void:
 	var key := "%d|%d|%d" % [game.format, game.human_team, int(game.two_player)]
 	if key != _squad_key:
@@ -228,7 +228,7 @@ func _card_painter(c: Control, p: Player, tag: String) -> void:
 	var r := Rect2(Vector2.ZERO, c.size)
 	var on := p.human
 	var info: Dictionary = p.st
-	UI.ink_panel(c, r, UI.YELLOW if on else Color(UI.INK, 0.92), UI.WHITE if on else info.color, p.get_index() + 40)
+	UI.ink_panel(c, r, UI.RED if on else Color(UI.INK, 0.92), UI.WHITE if on else info.color, p.get_index() + 40)
 	var shirt: Color = info.keeper if p.is_keeper else info.color
 	UI.portrait(c, Rect2(8, 6, r.size.x - 16, r.size.y - 36), p.ch, shirt, info.alt)
 	var tone: Color = Vessel.KINDS[p.sig].color
@@ -272,7 +272,7 @@ func _track_painter(c: Control) -> void:
 		var nm: String = Vessel.STAGES[i].name
 		var fs := 22 if i == cur else 18
 		var ext := f.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		c.draw_string(f, Vector2(cx - ext.x / 2.0, 90), nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UI.YELLOW if i == cur else Color(1, 1, 1, 0.55 if i < cur else 0.35))
+		c.draw_string(f, Vector2(cx - ext.x / 2.0, 90), nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UI.RED if i == cur else Color(1, 1, 1, 0.55 if i < cur else 0.35))
 		if i < n - 1:
 			var ax := cx + rad + 12.0
 			var bx := step * (i + 1.5) - 21.0 - 12.0
@@ -305,7 +305,7 @@ func _build_prompts() -> void:
 func _prompt_painter(c: Control) -> void:
 	UI.ink_panel(c, Rect2(Vector2.ZERO, c.size), Color(UI.INK, 0.94), UI.BLUE, 21)
 	var pad := Input.get_connected_joypads().size() > 0
-	var items := [["Y" if pad else "L", "SKILL", UI.YELLOW], ["A" if pad else "J", "PASS", UI.BLUE], ["B" if pad else "K", "SHOT", UI.RED], ["LB" if pad else "Q", "SOUL", Color("b04dff")]]
+	var items := [["Y" if pad else "L", "SKILL", UI.WHITE], ["A" if pad else "J", "PASS", UI.BLUE], ["B" if pad else "K", "SHOT", UI.RED], ["LB" if pad else "Q", "SOUL", Color("b04dff")]]
 	var f := UI.font()
 	var w := c.size.x / 4.0
 	for i in 4:
@@ -327,7 +327,7 @@ func _build_result() -> void:
 	result.add_child(shade)
 	var band := UI.art(func(c: Control) -> void:
 		UI.ink_panel(c, Rect2(0, c.size.y * 0.12, c.size.x, c.size.y * 0.76), Color(UI.INK, 0.96), UI.BLUE, 31)
-		UI.brush(c, Vector2(-40, c.size.y * 0.12), Vector2(c.size.x * 0.7, c.size.y * 0.06), 26, UI.YELLOW, 32)
+		UI.brush(c, Vector2(-40, c.size.y * 0.12), Vector2(c.size.x * 0.7, c.size.y * 0.06), 26, UI.RED, 32)
 		UI.brush(c, Vector2(c.size.x * 0.3, c.size.y * 0.95), Vector2(c.size.x + 40, c.size.y * 0.88), 22, UI.BLUE, 33))
 	band.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	band.custom_minimum_size = Vector2(1500, 420)
@@ -342,7 +342,7 @@ func _build_result() -> void:
 	result.add_child(v)
 	result_label = _label("", 130, Color.WHITE, 22)
 	v.add_child(result_label)
-	result_sub = _label("", 44, UI.YELLOW, 8)
+	result_sub = _label("", 44, UI.RED, 8)
 	v.add_child(result_sub)
 	v.add_child(_label("PRESS  ENTER / START", 34, Color.WHITE, 8))
 

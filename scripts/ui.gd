@@ -1,27 +1,26 @@
 class_name UI
 extends RefCounted
-## Street-graffiti UI kit (black ink panels, electric blue, hazard yellow, brush slashes).
+## Street-graffiti UI kit (black ink panels, electric blue, hot red highlights, brush slashes).
 ## One shared Theme, a few procedural painters (brush strokes, crowns, crests, portraits, skyline)
 ## and small widgets. Everything is drawn from code: no art files.
 
 const INK := Color("0a0d16")
 const INK2 := Color("141a2b")
-const YELLOW := Color("ffe600")
 const BLUE := Color("1e9bff")
 const SKY := Color("42b6ff")
 const DEEP := Color("0b4f9e")
 const WHITE := Color("f4f7ff")
-const RED := Color("ff3b3b")
+const RED := Color("e8212f")   # the highlight: brush slashes, focus slabs, the crown
 
 const SKEW := -0.18   # the italic slant shared by type and slabs
 
 ## Roster pool for the character select. Cosmetic only: look, name and gender (picks the 3D model). Gameplay stays tied to the team slot.
 ## hair: 0 curls · 1 bald · 2 braids · 3 cap · 4 afro · 5 headband
 const CHARS := [
-	{"name": "AIDEN", "last": "JACOBS", "nick": "ACE", "skin": Color("7a4a2e"), "hair": 0, "hc": Color("14110f"), "tone": Color("ffe600")},
+	{"name": "AIDEN", "last": "JACOBS", "nick": "ACE", "skin": Color("7a4a2e"), "hair": 0, "hc": Color("14110f"), "tone": Color("e9f0ff")},
 	{"name": "SIBUSISO", "last": "ZULU", "nick": "TEMPO", "skin": Color("5a3825"), "hair": 1, "hc": Color("14110f"), "tone": Color("ff3b3b")},
 	{"name": "LUVO", "last": "MBEKI", "nick": "GRANITE", "skin": Color("3e2618"), "hair": 5, "hc": Color("14110f"), "tone": Color("1e9bff")},
-	{"name": "KYLE", "last": "VAN DER MERWE", "nick": "FLASH", "skin": Color("e0b08a"), "hair": 3, "hc": Color("f2c94c"), "tone": Color("ffe600")},
+	{"name": "KYLE", "last": "VAN DER MERWE", "nick": "FLASH", "skin": Color("e0b08a"), "hair": 3, "hc": Color("f2c94c"), "tone": Color("e9f0ff")},
 	{"name": "ZARA", "female": true, "last": "NAIDOO", "nick": "ZEE", "skin": Color("8d5a3b"), "hair": 2, "hc": Color("1b120d"), "tone": Color("ff3b3b")},
 	{"name": "THANDO", "last": "KHUMALO", "nick": "TIGER", "skin": Color("4a2e1e"), "hair": 4, "hc": Color("0d0b0a"), "tone": Color("39ff14")},
 	{"name": "NALEDI", "female": true, "last": "DLAMINI", "nick": "NOVA", "skin": Color("6b4028"), "hair": 2, "hc": Color("2a1a12"), "tone": Color("b04dff")},
@@ -56,7 +55,7 @@ static func theme() -> Theme:
 	t.set_color("font_color", "Label", WHITE)
 	t.set_color("font_outline_color", "Label", Color.BLACK)
 	t.set_constant("outline_size", "Label", 6)
-	# Menu row: ink slab, goes hazard-yellow with black type on focus.
+	# Menu row: ink slab, goes hot red with black type on focus.
 	t.set_font("font", "Button", font())
 	t.set_font_size("font_size", "Button", 34)
 	for c: String in ["font_color", "font_pressed_color"]:
@@ -65,17 +64,17 @@ static func theme() -> Theme:
 		t.set_color(c, "Button", INK)
 	t.set_color("font_disabled_color", "Button", Color(1, 1, 1, 0.35))
 	t.set_stylebox("normal", "Button", slab(Color(INK, 0.88), Color(BLUE, 0.55), false))
-	t.set_stylebox("hover", "Button", slab(YELLOW, WHITE, true))
-	t.set_stylebox("focus", "Button", slab(YELLOW, WHITE, true))
-	t.set_stylebox("pressed", "Button", slab(WHITE, YELLOW, true))
+	t.set_stylebox("hover", "Button", slab(RED, WHITE, true))
+	t.set_stylebox("focus", "Button", slab(RED, WHITE, true))
+	t.set_stylebox("pressed", "Button", slab(WHITE, RED, true))
 	t.set_stylebox("disabled", "Button", slab(Color(INK, 0.5), Color(1, 1, 1, 0.1), false))
 	# Variation: the big call-to-action (CONFIRM / PRESS START).
 	t.add_type("Cta")
 	t.set_type_variation("Cta", "Button")
-	t.set_stylebox("normal", "Cta", slab(YELLOW, INK, true))
+	t.set_stylebox("normal", "Cta", slab(RED, INK, true))
 	t.set_color("font_color", "Cta", INK)
-	t.set_stylebox("focus", "Cta", slab(WHITE, YELLOW, true))
-	t.set_stylebox("hover", "Cta", slab(WHITE, YELLOW, true))
+	t.set_stylebox("focus", "Cta", slab(WHITE, RED, true))
+	t.set_stylebox("hover", "Cta", slab(WHITE, RED, true))
 	# Variation: bare tab on the left of a settings page.
 	t.add_type("Tab")
 	t.set_type_variation("Tab", "Button")
@@ -315,7 +314,7 @@ static func backdrop(c: Control) -> void:
 		for wy in int(h / 26.0):
 			for wx in int(w / 22.0):
 				if rng.randf() < 0.16:
-					c.draw_rect(Rect2(x + 8 + wx * 22, gy - h + 10 + wy * 26, 8, 10), Color(YELLOW, 0.55))
+					c.draw_rect(Rect2(x + 8 + wx * 22, gy - h + 10 + wy * 26, 8, 10), Color(WHITE, 0.4))
 		x += w + rng.randf_range(0, 8)
 	var tx := s.x * 0.62   # the tower
 	c.draw_colored_polygon(PackedVector2Array([Vector2(tx - 12, gy), Vector2(tx - 5, gy - s.y * 0.5), Vector2(tx + 5, gy - s.y * 0.5), Vector2(tx + 12, gy)]), Color("07224d"))
@@ -326,9 +325,9 @@ static func backdrop(c: Control) -> void:
 		var gx := s.x * i / 6.0
 		c.draw_line(Vector2(gx, gy), Vector2((gx - s.x * 0.5) * 2.4 + s.x * 0.5, s.y), Color(BLUE, 0.25), 3)
 	# slashes
-	brush(c, Vector2(-40, s.y * 0.1), Vector2(s.x * 0.5, -10), 46, Color(YELLOW, 0.95), 11)
-	brush(c, Vector2(s.x * 0.55, s.y + 20), Vector2(s.x + 40, s.y * 0.82), 54, Color(YELLOW, 0.95), 12)
-	brush(c, Vector2(-30, s.y * 0.97), Vector2(s.x * 0.35, s.y * 0.86), 30, Color(YELLOW, 0.9), 13)
+	brush(c, Vector2(-40, s.y * 0.1), Vector2(s.x * 0.5, -10), 46, Color(RED, 0.95), 11)
+	brush(c, Vector2(s.x * 0.55, s.y + 20), Vector2(s.x + 40, s.y * 0.82), 54, Color(RED, 0.95), 12)
+	brush(c, Vector2(-30, s.y * 0.97), Vector2(s.x * 0.35, s.y * 0.86), 30, Color(RED, 0.9), 13)
 	brush(c, Vector2(s.x * 0.7, -10), Vector2(s.x + 30, s.y * 0.14), 34, Color(INK, 0.9), 14)
 	brush(c, Vector2(-30, s.y * 0.2), Vector2(s.x * 0.18, s.y * 0.05), 22, Color(INK, 0.85), 15)
 
@@ -404,7 +403,7 @@ class Chooser extends Button:
 		l.add_theme_constant_override("outline_size", 0)
 		return l
 
-	## Row labels stay readable on the yellow focus slab: black on yellow, white on ink.
+	## Row labels stay readable on the red focus slab: black on red, white on ink.
 	func _recolor() -> void:
 		var lit := has_focus() or is_hovered()
 		for n in find_children("*", "Label", true, false):

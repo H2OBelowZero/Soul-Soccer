@@ -76,7 +76,7 @@ class CharCard extends Button:
 		var tone: Color = ch.tone
 		var info: Dictionary = menu.game.TEAMS[menu.pass_team]
 		var order := menu.sel.find(idx)
-		UI.ink_panel(self, r, tone.darkened(0.15), UI.YELLOW if has_focus() else UI.INK, idx + 90)
+		UI.ink_panel(self, r, tone.darkened(0.15), UI.RED if has_focus() else UI.INK, idx + 90)
 		UI.portrait(self, Rect2(8, 14, size.x - 16, size.y - 100), ch, tone, UI.WHITE)
 		var plate := Rect2(0, size.y - 84, size.x, 84)
 		draw_rect(plate, Color(UI.INK, 0.95))
@@ -85,10 +85,10 @@ class CharCard extends Button:
 		draw_string(f, Vector2(12, size.y - 30), "\"%s\"" % ch.nick, HORIZONTAL_ALIGNMENT_LEFT, size.x - 20, 20, info.alt)
 		draw_string(f, Vector2(12, size.y - 10), ch.last, HORIZONTAL_ALIGNMENT_LEFT, size.x - 20, 17, Color(1, 1, 1, 0.7))
 		if has_focus():
-			draw_rect(r.grow(-2), UI.YELLOW, false, 6.0)
+			draw_rect(r.grow(-2), UI.RED, false, 6.0)
 		if order >= 0:
 			draw_rect(r, Color(0, 0, 0, 0.35))
-			draw_circle(Vector2(size.x - 34, 34), 24, UI.YELLOW)
+			draw_circle(Vector2(size.x - 34, 34), 24, UI.RED)
 			draw_string(f, Vector2(size.x - 45, 46), str(order + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 34, UI.INK)
 		if disabled:
 			draw_rect(r, Color(0, 0, 0, 0.6))
@@ -118,14 +118,14 @@ class StageCard extends Button:
 	func _draw() -> void:
 		var r := Rect2(Vector2.ZERO, size)
 		var art := Rect2(10, 10, size.x - 20, size.y - 150)
-		draw_rect(r, UI.YELLOW if has_focus() else Color(UI.BLUE, 0.9))
+		draw_rect(r, UI.RED if has_focus() else Color(UI.BLUE, 0.9))
 		draw_rect(r.grow(-6), UI.INK)
 		_court(art)
 		var f := UI.font()
 		draw_string(f, Vector2(20, size.y - 82), title, HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 34, UI.WHITE if not locked else Color(1, 1, 1, 0.6))
 		var lines := sub.split("\n")
 		for i in lines.size():
-			draw_string(f, Vector2(20, size.y - 48 + i * 28), lines[i], HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 24, UI.YELLOW if not locked else Color(1, 1, 1, 0.4))
+			draw_string(f, Vector2(20, size.y - 48 + i * 28), lines[i], HORIZONTAL_ALIGNMENT_LEFT, size.x - 30, 24, UI.RED if not locked else Color(1, 1, 1, 0.4))
 
 	func _court(a: Rect2) -> void:
 		draw_rect(a, UI.SKY if not locked else Color("3a3f4a"))
@@ -145,7 +145,7 @@ class StageCard extends Button:
 		# fence + graffiti wall
 		draw_rect(Rect2(a.position.x, gy - 18, a.size.x, 22), Color("101a30"))
 		for i in 6:
-			draw_rect(Rect2(a.position.x + 12 + i * 52, gy - 14, 36, 12), [UI.YELLOW, UI.RED, UI.BLUE, Color("b04dff"), Color("39ff14"), UI.WHITE][i])
+			draw_rect(Rect2(a.position.x + 12 + i * 52, gy - 14, 36, 12), [UI.WHITE, UI.RED, UI.BLUE, Color("b04dff"), Color("39ff14"), UI.SKY][i])
 		# floor: perspective court
 		var l0 := Vector2(a.position.x + a.size.x * 0.2, gy + 4)
 		var l1 := Vector2(a.end.x - a.size.x * 0.2, gy + 4)
@@ -531,17 +531,17 @@ func _put_right(c: Control, right: float, top: float, w: float, h: float) -> voi
 	c.offset_bottom = top + h
 
 
-## Black brush banner with the crown, a big title and an optional yellow sub-line.
+## Black brush banner with the crown, a big title and an optional red sub-line.
 func _header(p: Control, title: String, sub := "") -> void:
 	var f := UI.font()
 	var tw := f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 84).x
 	var a := UI.art(func(c: Control) -> void:
 		UI.brush(c, Vector2(-40, 82), Vector2(tw + 250, 74), 128, UI.INK, 41)
-		UI.crown(c, Rect2(56, 18, 54, 34), UI.YELLOW)
+		UI.crown(c, Rect2(56, 18, 54, 34), UI.RED)
 		c.draw_string(f, Vector2(60, 110), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 84, UI.WHITE)
 		if sub != "":
 			var sw := f.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
-			UI.brush(c, Vector2(30, 152), Vector2(sw + 150, 150), 50, UI.YELLOW, 42)
+			UI.brush(c, Vector2(30, 152), Vector2(sw + 150, 150), 50, UI.RED, 42)
 			c.draw_string(f, Vector2(80, 162), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, UI.INK))
 	_put(a, 0, 0, tw + 360, 200)
 	p.add_child(a)
@@ -558,7 +558,7 @@ func _footer(p: Control, name: String, hints: Array) -> void:
 			c.draw_string(f, Vector2(x + 32, 54), h[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 28, UI.WHITE)
 			x += 60 + f.get_string_size(h[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 28).x + 24
 		UI.brush(c, Vector2(-30, 112), Vector2(c.size.x * 0.8, 108), 54, UI.INK, 52)
-		UI.crown(c, Rect2(40, 92, 36, 22), UI.YELLOW)
+		UI.crown(c, Rect2(40, 92, 36, 22), UI.RED)
 		c.draw_string(f, Vector2(96, 118), name, HORIZONTAL_ALIGNMENT_LEFT, -1, 30, UI.WHITE))
 	a.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	a.offset_left = 0
@@ -584,23 +584,25 @@ func _menu_list(p: Control, left: float, top: float, w: float, items: Array, see
 
 func _build_title() -> void:
 	var p := _page(&"title")
-	var f := UI.font()
-	var art := UI.art(func(c: Control) -> void:
-		UI.brush(c, Vector2(-60, 330), Vector2(c.size.x + 120, 190), 340, UI.INK, 61)
-		var w1 := f.get_string_size("SOUL ", HORIZONTAL_ALIGNMENT_LEFT, -1, 190).x
-		var w2 := f.get_string_size("SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 190).x
-		var x := (c.size.x - w1 - w2) * 0.5
-		UI.crown(c, Rect2(c.size.x * 0.5 - 70, 150, 140, 88), UI.YELLOW)
-		c.draw_string(f, Vector2(x, 480), "SOUL ", HORIZONTAL_ALIGNMENT_LEFT, -1, 190, UI.WHITE)
-		c.draw_string(f, Vector2(x + w1, 480), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 190, UI.YELLOW)
-		UI.brush(c, Vector2(c.size.x * 0.5 - 420, 560), Vector2(c.size.x * 0.5 + 420, 560), 70, UI.YELLOW, 62)
-		c.draw_string(f, Vector2(0, 580), "SOWETO FOOTBALL BUILDS DREAMS", HORIZONTAL_ALIGNMENT_CENTER, c.size.x, 44, UI.INK))
+	var art := TextureRect.new()   # the same key art on desktop and mobile; wider windows crop it to cover
+	art.texture = load("res://SS_title.png")
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	art.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	p.add_child(art)
+	var slash := UI.art(func(c: Control) -> void:
+		UI.brush(c, Vector2(-40, 70), Vector2(c.size.x + 30, 50), 112, UI.INK, 63))
+	slash.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	slash.offset_left = 0
+	slash.offset_top = -330
+	slash.offset_right = 900
+	slash.offset_bottom = -170
+	p.add_child(slash)
 	var go := UI.label("TAP TO START" if Touch.available() else "PRESS  ENTER  /  START", 48, UI.WHITE, 8)
-	go.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	go.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	go.offset_top = -330
+	go.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	go.offset_left = 70
+	go.offset_top = -285
 	p.add_child(go)
 	create_tween().set_loops().set_ignore_time_scale(true).tween_property(go, "modulate:a", 0.25, 0.8).from(1.0).set_trans(Tween.TRANS_SINE)
 	var b := UI.button("", func() -> void:   # the whole screen is the start button: Enter, pad or a tap
@@ -627,7 +629,7 @@ func _build_main() -> void:
 		["QUIT", get_tree().quit]])
 	var f := UI.font()
 	var tag := UI.art(func(c: Control) -> void:
-		UI.brush(c, Vector2(0, 150), Vector2(c.size.x, 120), 230, UI.YELLOW, 71)
+		UI.brush(c, Vector2(0, 150), Vector2(c.size.x, 120), 230, UI.RED, 71)
 		UI.crown(c, Rect2(c.size.x * 0.5 - 30, 20, 60, 38), UI.INK)
 		c.draw_set_transform(Vector2(c.size.x * 0.5, 120), -0.07, Vector2.ONE)
 		for i in 3:
@@ -638,7 +640,7 @@ func _build_main() -> void:
 	var card := UI.Ink.new(Color(UI.INK, 0.9), UI.BLUE, 9)
 	var v := VBoxContainer.new()
 	card.add_child(v)
-	v.add_child(UI.label("MATCH SETUP", 30, UI.YELLOW))
+	v.add_child(UI.label("MATCH SETUP", 30, UI.RED))
 	setup_label = UI.label("", 28)
 	v.add_child(setup_label)
 	p.add_child(card)
@@ -735,7 +737,7 @@ func _preview_painter(c: Control) -> void:
 	UI.brush(c, Vector2(0, 120), Vector2(c.size.x, 120), 230, info.color, 91)
 	UI.portrait(c, Rect2(10, 0, c.size.x - 20, 260), ch, info.color.darkened(0.3), info.alt)
 	var tag := "CAPTAIN" if order == 0 else ("PICKED  #%d" % (order + 1) if order > 0 else "AVAILABLE")
-	UI.brush(c, Vector2(0, 280), Vector2(190, 280), 40, UI.YELLOW, 92)
+	UI.brush(c, Vector2(0, 280), Vector2(190, 280), 40, UI.RED, 92)
 	c.draw_string(f, Vector2(16, 292), tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, UI.INK)
 	c.draw_string(f, Vector2(0, 336), ch.name, HORIZONTAL_ALIGNMENT_LEFT, c.size.x, 44, UI.WHITE)
 	c.draw_string(f, Vector2(0, 366), ch.last, HORIZONTAL_ALIGNMENT_LEFT, c.size.x, 26, Color(1, 1, 1, 0.75))
@@ -745,7 +747,7 @@ func _preview_painter(c: Control) -> void:
 		var y := 424.0 + i * 26.0
 		c.draw_string(f, Vector2(0, y + 18), stats[i][0], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UI.WHITE)
 		c.draw_rect(Rect2(140, y + 4, 200, 14), Color(1, 1, 1, 0.14))
-		c.draw_rect(Rect2(140, y + 4, 200.0 * clampf(float(info[stats[i][1]]) / (stats[i][2] * 1.05), 0.1, 1.0), 14), UI.YELLOW)
+		c.draw_rect(Rect2(140, y + 4, 200.0 * clampf(float(info[stats[i][1]]) / (stats[i][2] * 1.05), 0.1, 1.0), 14), UI.RED)
 
 
 func _lineup_painter(c: Control) -> void:
@@ -770,7 +772,7 @@ func _lineup_painter(c: Control) -> void:
 			UI.portrait(c, Rect2(10, y + 8, 100, h - 14), ch, info.color, info.alt)
 			c.draw_string(f, Vector2(124, y + 40), ch.name, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 170, 30, UI.WHITE)
 			if i == 0:
-				UI.crown(c, Rect2(c.size.x - 52, y + 16, 34, 22), UI.YELLOW)
+				UI.crown(c, Rect2(c.size.x - 52, y + 16, 34, 22), UI.RED)
 			var kind: int = info.sigs[i + 1]
 			c.draw_string(f, Vector2(124, y + 70), roles[i], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1, 1, 1, 0.7))
 			c.draw_rect(Rect2(124, y + 82, 16, 16), Vessel.KINDS[kind].color)
@@ -866,16 +868,16 @@ func _build_controls() -> void:
 	var data := [
 		["", "PLAYER 1  ·  KEYBOARD / PAD", "PLAYER 2  ·  LOCAL"],
 		["MOVE", "WASD  /  L-STICK", "ARROWS"],
-		["PASS / SWITCH", "J or F  /  A", ","],
+		["PASS / LOB / SWITCH", "J or F  /  A  (hold = lob)", ","],
 		["SHOOT / TACKLE", "K or G  /  B", "."],
-		["SKILL / DODGE", "L or T  /  Y", ";"],
+		["SKILL / DODGE / FAKE", "L or T  /  Y  (mid-shot or hold-pass = fake)", ";"],
 		["SPRINT", "L-SHIFT  /  RT", "R-SHIFT"],
 		["SOUL", "Q  /  LB", "'"],
 		["PAUSE", "ESC  /  START", "ESC  /  START"]]
 	for r in data.size():
 		for c in 3:
-			var l := UI.label(data[r][c], 28 if r > 0 else 24, UI.YELLOW if (c == 0 or r == 0) else UI.WHITE, 4)
-			l.custom_minimum_size = Vector2([300, 460, 300][c], 0)
+			var l := UI.label(data[r][c], 28 if r > 0 else 24, UI.RED if (c == 0 or r == 0) else UI.WHITE, 4)
+			l.custom_minimum_size = Vector2([330, 520, 300][c], 0)
 			g.add_child(l)
 	var tips := UI.label("SOUL (Q / LB):  tap = Burst Sprint (Stirring)  ·  hold + Pass = Vision Pass  ·  hold + Shoot = Soul Shot (Possessed)  ·  hold + Skill = Curve (Possessed)\n"
 			+ "Beat players to feed the ball and steal their soul  ·  Pass to steady it (every 2nd pass charges it)  ·  Lose it and the souls turn  ·  BRICKS: overloaded goal = 2 bricks", 20, UI.WHITE, 4)
@@ -886,7 +888,7 @@ func _build_controls() -> void:
 	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	v.add_child(back)
 	p.add_child(panel)
-	_put(panel, 90, 230, 1180, 540)
+	_put(panel, 90, 230, 1320, 560)
 	_footer(p, "CONTROLS", [["o", "BACK"]])
 
 
@@ -895,10 +897,10 @@ func _build_pause() -> void:
 	var f := UI.font()
 	var hd := UI.art(func(c: Control) -> void:
 		UI.brush(c, Vector2(-20, 40), Vector2(c.size.x, 36), 80, UI.INK, 141)
-		UI.crown(c, Rect2(50, 4, 40, 26), UI.YELLOW)
+		UI.crown(c, Rect2(50, 4, 40, 26), UI.RED)
 		c.draw_string(f, Vector2(100, 56), "SOUL", HORIZONTAL_ALIGNMENT_LEFT, -1, 62, UI.WHITE)
-		c.draw_string(f, Vector2(250, 56), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 62, UI.YELLOW)
-		UI.brush(c, Vector2(40, 106), Vector2(c.size.x - 20, 104), 50, UI.YELLOW, 142)
+		c.draw_string(f, Vector2(250, 56), "SOCCER", HORIZONTAL_ALIGNMENT_LEFT, -1, 62, UI.RED)
+		UI.brush(c, Vector2(40, 106), Vector2(c.size.x - 20, 104), 50, UI.RED, 142)
 		c.draw_string(f, Vector2(90, 118), "PAUSE  /  MATCH MENU", HORIZONTAL_ALIGNMENT_LEFT, -1, 32, UI.INK))
 	_put(hd, 640, 150, 640, 140)
 	p.add_child(hd)
@@ -1051,7 +1053,7 @@ func _wait(text: String) -> void:
 
 ## A short note on whatever page is showing (link lost, etc).
 func toast(text: String) -> void:
-	var l := UI.label(text, 44, UI.YELLOW, 10)
+	var l := UI.label(text, 44, UI.RED, 10)
 	l.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	l.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	l.offset_top = 40
@@ -1079,8 +1081,8 @@ func _build_music() -> void:
 	music_card = UI.art(func(c: Control) -> void:
 		UI.ink_panel(c, Rect2(Vector2.ZERO, c.size), Color(UI.INK, 0.92), UI.BLUE, 42)
 		UI.brush(c, Vector2(20, 130), Vector2(c.size.x - 20, 130), 220, UI.BLUE, 43)
-		UI.portrait(c, Rect2(60, 20, c.size.x - 120, 230), UI.CHARS[7], UI.INK2, UI.YELLOW)
-		c.draw_arc(Vector2(c.size.x / 2.0, 118), 92, PI * 1.05, PI * 1.95, 24, UI.YELLOW, 12.0, true)
+		UI.portrait(c, Rect2(60, 20, c.size.x - 120, 230), UI.CHARS[7], UI.INK2, UI.RED)
+		c.draw_arc(Vector2(c.size.x / 2.0, 118), 92, PI * 1.05, PI * 1.95, 24, UI.RED, 12.0, true)
 		var title := String(Jukebox.now_playing()) if Jukebox.index >= 0 else "No songs yet"
 		c.draw_string(f, Vector2(24, 296), title, HORIZONTAL_ALIGNMENT_LEFT, c.size.x - 48, 40, UI.WHITE)
 		var dur := 0.0
@@ -1090,7 +1092,7 @@ func _build_music() -> void:
 			pos = Jukebox.player.get_playback_position()
 		c.draw_rect(Rect2(24, 324, c.size.x - 48, 8), Color(1, 1, 1, 0.2))
 		if dur > 0.0:
-			c.draw_rect(Rect2(24, 324, (c.size.x - 48) * clampf(pos / dur, 0.0, 1.0), 8), UI.YELLOW)
+			c.draw_rect(Rect2(24, 324, (c.size.x - 48) * clampf(pos / dur, 0.0, 1.0), 8), UI.RED)
 		c.draw_string(f, Vector2(24, 366), "%d:%02d" % [int(pos) / 60, int(pos) % 60], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, UI.WHITE)
 		c.draw_string(f, Vector2(0, 366), "%d:%02d" % [int(dur) / 60, int(dur) % 60], HORIZONTAL_ALIGNMENT_RIGHT, c.size.x - 24, 22, UI.WHITE), Vector2(480, 390))
 	p.add_child(music_card)
